@@ -2323,9 +2323,11 @@ git commit -m "feat: exact RTP via homogeneous linear Diophantine construction"
 **Interfaces:**
 - Consumes: 全部前述模組
 - Produces:
-  - `SolverOptions(seed, min_len, max_len, prefer_length_mod, max_candidates, signature_budget, max_seeds)`（Pydantic model，皆有預設值）
-  - `congruence_ok(spec, spin_count, n1) -> bool`
-  - `candidate_length_tuples(spec, options) -> Iterator[tuple[int, ...]]`（優先產出使 `spin_count % prefer_length_mod == 0` 者）
+  - `SolverOptions(seed, min_len, max_len, prefer_length_mod, max_candidates, signature_budget, max_seeds)`（Pydantic model，皆有預設值；`prefer_length_mod: int | None = None` 表示由 spec 推導）
+  - `required_units(spec, spin_count) -> int`
+  - `congruence_ok(spec, spin_count, support: Iterable[int]) -> bool`
+  - `derive_preferred_modulus(spec) -> int`
+  - `candidate_length_tuples(spec, options) -> Iterator[tuple[int, ...]]`（優先產出使 `spin_count % modulus == 0` 者）
   - `solve(spec: GameSpec, options: SolverOptions) -> ReelConfig | None`
 
 - [ ] **Step 1：寫失敗的測試**
@@ -2342,25 +2344,49 @@ from slotmath.solver import (
     SolverOptions,
     candidate_length_tuples,
     congruence_ok,
+    derive_preferred_modulus,
+    required_units,
     solve,
 )
 from slotmath.spec import load_spec
 from slotmath.verify import verify
+from tests.fixtures import GOLDEN
 from tests.test_naive import hw
 
 
-def test_congruence_rejects_n1_in_the_wrong_residue_class():
-    spec = hw()
-    # N = 1296 -> 4N mod 5 = 4, so n1 = 0 can never reach RTP 19/20
-    assert not congruence_ok(spec, spin_count=1296, n1=0)
-    assert congruence_ok(spec, spin_count=1296, n1=4)
-    assert congruence_ok(spec, spin_count=1296, n1=324 % 5 * 0 + 4)
+def test_required_units_is_nineteen_n():
+    assert required_units(hw(), 720) == 19 * 720
+    assert required_units(hw(), 1296) == 19 * 1296
 
 
-def test_congruence_is_satisfied_by_n1_zero_when_five_divides_n():
+def test_congruence_rejects_a_support_that_cannot_reach_the_target():
+    """N=1296: T = 19*1296 = 24624. gcd{5,20,100} = 5 and 24624 % 5 = 4, so no
+    arrangement of those payouts can total T. Rejected in O(1)."""
+    assert not congruence_ok(hw(), 1296, {0, 5, 20, 100})
+
+
+def test_congruence_accepts_every_golden_support():
     spec = hw()
-    assert congruence_ok(spec, spin_count=720, n1=0)
-    assert congruence_ok(spec, spin_count=960, n1=0)
+    for g in GOLDEN:
+        assert congruence_ok(spec, g.spin_count, set(g.distribution))
+
+
+def test_support_without_symbol_one_requires_five_to_divide_n():
+    """Every payout except symbol 1's 11 units is a multiple of 5. Drop symbol 1
+    and N must be divisible by 5. This is why stage 0 prefers those lengths."""
+    spec = hw()
+    coarse = {0, 20, 100}
+    assert congruence_ok(spec, 720, coarse)        # 5 | 720
+    assert not congruence_ok(spec, 1296, coarse)   # 5 does not divide 1296
+
+
+def test_congruence_is_vacuous_when_the_support_has_no_common_factor():
+    """Support including 11 has gcd 1, so there is no O(1) obstruction."""
+    assert congruence_ok(hw(), 1296, {0, 5, 11, 20, 100})
+
+
+def test_preferred_modulus_is_derived_not_hardcoded():
+    assert derive_preferred_modulus(hw()) == 5
 
 
 def test_candidate_lengths_put_multiples_of_five_first():
@@ -2434,9 +2460,10 @@ Stage numbering follows the spec; execution order is 0, 1, 3, then 2.
 from __future__ import annotations
 
 import random
+from functools import reduce
 from itertools import product
-from math import prod
-from typing import Iterator, Sequence
+from math import gcd, prod
+from typing import Iterable, Iterator, Sequence
 
 from pydantic import BaseModel
 
@@ -2453,41 +2480,75 @@ class SolverOptions(BaseModel):
     seed: int = 20260731
     min_len: int = 3
     max_len: int = 16
-    prefer_length_mod: int = 5
+    prefer_length_mod: int | None = None    # None -> derive from the spec
     max_candidates: int = 40_000
     signature_budget: int = 5_000_000
     max_seeds: int = 400
 
 
-def _residue_modulus(spec: GameSpec) -> int:
-    """The modulus the congruence lives in: gcd of the payout units that are
-    'coarse'. For the homework paytable this is 5, because every payout is a
-    multiple of 5 units except symbol 1's 11."""
-    from math import gcd
-
-    units = {
-        spec.payout_units(sym, p) for sym in spec.symbols for p in spec.patterns
-    }
-    coarse = 0
-    for u in units:
-        coarse = gcd(coarse, u)
-    return coarse if coarse > 1 else 1
-
-
-def congruence_ok(spec: GameSpec, spin_count: int, n1: int) -> bool:
-    """Necessary condition for hitting the RTP target exactly.
-
-    With modulus g, the reachable totals are congruent to the contribution of
-    the payouts not divisible by g. For the homework paytable that reduces to
-    n1 = 4N (mod 5). Returns True when the modulus is 1 (no constraint).
-    """
-    modulus = _residue_modulus(spec)
-    if modulus <= 1:
-        return True
+def required_units(spec: GameSpec, spin_count: int) -> int:
+    """Total payout, in 1/D units, that hits the RTP target exactly."""
     rtp = spec.targets.rtp
     denominator = spec.payout_unit_denominator()
-    required = (rtp.numerator * denominator * spin_count) // rtp.denominator
-    return (n1 - required) % modulus == 0
+    total = rtp * denominator * spin_count
+    if total.denominator != 1:
+        raise ValueError(
+            f"target RTP {rtp} is unreachable at spin_count {spin_count}: it "
+            f"would need {total} payout units, which is not an integer"
+        )
+    return int(total)
+
+
+def congruence_ok(spec: GameSpec, spin_count: int, support: Iterable[int]) -> bool:
+    """Necessary condition for hitting the RTP target exactly, in O(1).
+
+    A configuration whose payouts all come from `support` can only produce
+    totals divisible by gcd(support). If the required total is not, no
+    arrangement of those payouts can reach it -- however long you search.
+
+    The modulus depends on the CANDIDATE's support, not on the spec: the spec
+    permits symbol 1's 11 units, which is coprime to everything else, so a
+    spec-level gcd would be 1 and the test would be vacuous. The obstruction
+    only appears once a candidate declines to use that payout.
+
+    Returns True when gcd(support) is 1 -- no obstruction, not a guarantee.
+    """
+    nonzero = [u for u in support if u != 0]
+    if not nonzero:
+        return required_units(spec, spin_count) == 0
+    modulus = reduce(gcd, nonzero)
+    if modulus <= 1:
+        return True
+    return required_units(spec, spin_count) % modulus == 0
+
+
+def derive_preferred_modulus(spec: GameSpec) -> int:
+    """Which spin counts make the search easy.
+
+    If a whole symbol can be left out, the remaining payout units may share a
+    factor g > 1, and then the required total forces N into a residue class.
+    For the homework paytable, dropping symbol 1 leaves every payout a
+    multiple of 5, which forces 5 | N -- and with 5 | N the symbol is not
+    needed at all. Returns 1 when nothing is gained.
+    """
+    rtp = spec.targets.rtp
+    denominator = spec.payout_unit_denominator()
+    best = 1
+    for dropped in spec.symbols:
+        rest = [
+            spec.payout_units(sym, p)
+            for sym in spec.symbols
+            if sym != dropped
+            for p in spec.patterns
+        ]
+        g = reduce(gcd, rest) if rest else 0
+        if g <= 1:
+            continue
+        for m in range(1, g * rtp.denominator + 1):
+            if (rtp.numerator * denominator * m) % (rtp.denominator * g) == 0:
+                best = max(best, m)
+                break
+    return best
 
 
 def candidate_length_tuples(
@@ -2497,12 +2558,16 @@ def candidate_length_tuples(
     hi = options.max_len
     if lo > hi:
         return
+    modulus = (
+        options.prefer_length_mod
+        if options.prefer_length_mod is not None
+        else derive_preferred_modulus(spec)
+    )
     every = list(product(range(lo, hi + 1), repeat=spec.grid.cols))
-    modulus = options.prefer_length_mod
     preferred = [t for t in every if modulus > 1 and prod(t) % modulus == 0]
-    rest = [t for t in every if t not in set(preferred)]
+    seen = set(preferred)
     yield from preferred
-    yield from rest
+    yield from (t for t in every if t not in seen)
 
 
 def solve(spec: GameSpec, options: SolverOptions) -> ReelConfig | None:
@@ -2535,6 +2600,8 @@ def solve(spec: GameSpec, options: SolverOptions) -> ReelConfig | None:
                 spec, reels, budget=options.signature_budget
             )
             metrics = build_metrics(spec, distribution)
+            if not congruence_ok(spec, metrics.spin_count, distribution.keys()):
+                continue
             if exact_rtp(metrics) != spec.targets.rtp:
                 continue
             if exact_win_rate(metrics) < spec.targets.min_win_rate:
