@@ -64,7 +64,38 @@ def test_signature_is_symbol_when_all_rows_match_else_none():
     assert window_signature((0, 1, 2), plan) == (None, None, None)
 
 
-def test_distinct_signature_count_for_homework_column_is_46():
+def test_column_plan_sorts_out_of_order_rows():
+    """The sorted() call in column_plans is load-bearing: it handles cells
+    given out of order. Pattern with cells [[0,2],[0,0]] should record rows
+    (0, 2) in ascending order."""
+    spec = GameSpec.model_validate({
+        "name": "t",
+        "grid": {"cols": 3, "rows": 3},
+        "symbols": {"0": 0.25, "1": 0.55, "2": 1, "3": 3, "4": 5},
+        "patterns": [
+            {"name": "OutOfOrder", "cells": [[0, 2], [0, 0]]},
+        ],
+        "targets": {"rtp": 0.95},
+    })
+    plans = column_plans(spec)
+    entries = dict(plans[0].entries)
+    assert entries[0] == (0, 2)
+
+
+def test_long_strip_cyclic_wrapping():
+    """Cyclic wrapping with a strip much longer than rows.
+    Tests both interior windows and wrap-around at the boundaries."""
+    strip = list(range(100))
+    windows = reel_windows(strip, 3)
+    # Interior window: position 97 wraps within the strip
+    assert windows[97] == (97, 98, 99)
+    # Wrap around: position 99 wraps to start
+    assert windows[99] == (99, 0, 1)
+    # Wrap around: position 98 wraps to start
+    assert windows[98] == (98, 99, 0)
+
+
+def test_distinct_signature_count_for_homework_column_is_16():
     """5 all-same + 5 top-pair-only + 5 bottom-pair-only + 1 none = 16.
 
     (The brief's comment listing "20 top-pair" and "20 bottom-pair" describes
