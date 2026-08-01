@@ -79,6 +79,49 @@ def test_solve_produces_a_config_passing_every_gate():
     assert report.passed, report.render()
     assert exact_rtp(config.metrics) == Fraction(19, 20)
     assert exact_win_rate(config.metrics) >= Fraction(11, 20)
+    used = {s for reel in config.reels for s in reel}
+    assert used == set(spec.symbols), (
+        f"solve() must use every declared symbol; missing {set(spec.symbols) - used}"
+    )
+
+
+def test_solve_rejects_a_candidate_missing_declared_symbols(monkeypatch):
+    """Root-cause regression for the missing-symbol-coverage bug: fixture B
+    (tests/fixtures.py) hits RTP=19/20 and win_rate=13/20 exactly -- both
+    homework targets -- but its reels never contain symbols 1 or 4 anywhere.
+    Before solve() checked symbol coverage, its acceptance loop only checked
+    RTP and win_rate, so it would have accepted and returned exactly this
+    candidate. Force it to be the only candidate considered (patch
+    _run_composition/search_last_reel to hand back fixture B's reels
+    verbatim, and cap max_seeds at 1 so no other attempt can run) and confirm
+    solve() now refuses it instead of returning an incomplete config."""
+    import slotmath.solving.solver as solver_mod
+
+    b = GOLDEN[1]
+    assert b.name == "B"
+    assert {s for r in b.reels for s in r} == {0, 2, 3}, (
+        "fixture B is expected to omit symbols 1 and 4 -- if this changed, "
+        "this test no longer exercises the coverage filter"
+    )
+
+    calls = iter(b.reels[:-1])
+    monkeypatch.setattr(
+        solver_mod, "_run_composition", lambda rng, symbols, length: next(calls)
+    )
+    monkeypatch.setattr(
+        solver_mod,
+        "search_last_reel",
+        lambda spec, fixed, min_len, max_len, seed, max_candidates=200_000: list(
+            b.reels[-1]
+        ),
+    )
+
+    spec = hw()
+    result = solve(spec, SolverOptions(seed=1, max_seeds=1, max_candidates=10))
+    assert result is None, (
+        "solve() accepted a candidate missing declared symbols 1 and 4 "
+        "(fixture B), even though it hits RTP and win-rate exactly"
+    )
 
 
 def test_solve_is_reproducible_for_a_fixed_seed():

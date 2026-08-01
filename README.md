@@ -95,21 +95,24 @@ The combine-logic (how multiple winning patterns on one spin add up) is intentio
 flowchart TD
     A(["slotmath verify"]) --> B{"symbols_declared"}
     B -- "no" --> X1[["exit 1: FAIL"]]
-    B -- "yes" --> C{"Layer 1: file_consistency<br/>(integers + derived floats self-check)"}
-    C -- "no" --> X2[["exit 1: FAIL"]]
-    C -- "yes" --> D{"Layer 2: engine_matches_naive"}
-    D -- "no" --> X3[["exit 1: FAIL - program bug"]]
-    D -- "yes" --> E{"Layer 2: file_matches_recompute"}
-    E -- "no" --> X4[["exit 1: FAIL - stale/edited artifact"]]
-    E -- "yes" --> F["evaluate the remaining 4 gates<br/>(none short-circuits the others)"]
-    F --> G["rtp_exact:<br/>exact Fraction == target"]
-    F --> H["min_win_rate:<br/>exact Fraction >= target"]
-    F --> I["Layer 3: monte_carlo<br/>fixed-seed sim within 5 sigma"]
-    F --> J["win_rate_not_degenerate<br/>(warning only, never fails the verdict)"]
-    G & H & I & J --> K{"every fail-severity gate passed?"}
-    K -- "yes" --> Pass(["exit 0: PASS"])
-    K -- "no" --> Fail(["exit 1: FAIL"])
+    B -- "yes" --> C["all_symbols_used<br/>(does not short-circuit)"]
+    C --> D{"Layer 1: file_consistency<br/>(integers + derived floats self-check)"}
+    D -- "no" --> X2[["exit 1: FAIL"]]
+    D -- "yes" --> E{"Layer 2: engine_matches_naive"}
+    E -- "no" --> X3[["exit 1: FAIL - program bug"]]
+    E -- "yes" --> F{"Layer 2: file_matches_recompute"}
+    F -- "no" --> X4[["exit 1: FAIL - stale/edited artifact"]]
+    F -- "yes" --> G["evaluate the remaining 4 gates<br/>(none short-circuits the others)"]
+    G --> H["rtp_exact:<br/>exact Fraction == target"]
+    G --> I["min_win_rate:<br/>exact Fraction >= target"]
+    G --> J["Layer 3: monte_carlo<br/>fixed-seed sim within 5 sigma"]
+    G --> K["win_rate_not_degenerate<br/>(warning only, never fails the verdict)"]
+    C & H & I & J & K --> L{"every fail-severity gate passed?"}
+    L -- "yes" --> Pass(["exit 0: PASS"])
+    L -- "no" --> Fail(["exit 1: FAIL"])
 ```
+
+`all_symbols_used` fails when a symbol declared in the spec never appears on any reel — dead weight in the paytable that RTP/win-rate targets alone would never catch, since neither depends on a symbol actually being reachable. It does not short-circuit like `symbols_declared` does: an undeclared symbol makes payout computation itself suspect, but a missing declared symbol doesn't stop Layers 1-3 from computing correctly, so they still run and report their own status independently.
 
 `file_consistency` (Layer 1) also checks the four *display* floats (`rtp`, `win_rate`, `volatility`, `max_win`) against values derived from the integer counts, with a tolerance (`_FLOAT_RTOL = 1e-9`) that exists **only** to absorb float round-trip noise in that display check — it never touches the exact `Fraction` comparisons in `rtp_exact`/`min_win_rate`.
 
@@ -210,7 +213,7 @@ An earlier version of this file held a *degenerate* configuration — two symbol
 uv run pytest -v
 ```
 
-runs the full suite (191 tests as of this reorganization): one test module per `src/slotmath/*/*.py`, plus `tests/test_hook.py` (including a subprocess test that runs the literal command configured in `.claude/settings.json`, not just an in-process call) and `tests/test_skills.py`.
+runs the full suite (193 tests as of this writing): one test module per `src/slotmath/*/*.py`, plus `tests/test_hook.py` (including a subprocess test that runs the literal command configured in `.claude/settings.json`, not just an in-process call) and `tests/test_skills.py`.
 
 To independently verify the accepted deliverable yourself:
 
@@ -218,7 +221,7 @@ To independently verify the accepted deliverable yourself:
 uv run slotmath verify solutions/homework-3x3.json
 ```
 
-should print eight gates, all `PASS` (one — `win_rate_not_degenerate` — is a warning-severity gate that also happens to pass here, since this configuration's win rate is below 1), and exit 0. Widen the Monte Carlo layer for a more thorough independent check:
+should print nine gates, all `PASS` (one — `win_rate_not_degenerate` — is a warning-severity gate that also happens to pass here, since this configuration's win rate is below 1), and exit 0. Widen the Monte Carlo layer for a more thorough independent check:
 
 ```bash
 uv run slotmath verify solutions/homework-3x3.json --mc-spins 20000000

@@ -75,7 +75,10 @@ def test_main_returns_2_for_unknown_subcommand(capsys):
 
 
 def test_verify_returns_0_for_a_golden_config(tmp_path, capsys):
-    cfg = write_config(tmp_path, GOLDEN[2], "configs/homework-3x3.json")
+    # Fixture A: the only golden fixture using all five declared symbols (B
+    # and C each omit one -- see tests/test_verify.py), so it's the one that
+    # passes the all_symbols_used gate and every other gate outright.
+    cfg = write_config(tmp_path, GOLDEN[0], "configs/homework-3x3.json")
     assert main(["verify", str(cfg), *MC]) == 0
     assert "PASS" in capsys.readouterr().out
 

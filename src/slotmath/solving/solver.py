@@ -158,6 +158,16 @@ def solve(spec: GameSpec, options: SolverOptions) -> ReelConfig | None:
                 continue
 
             reels = [*fixed, last]
+            # _run_composition and search_last_reel each sample independently
+            # from the full symbol set, so a symbol can end up unused by pure
+            # chance -- especially with short reels or many symbols. Nothing
+            # in the RTP/win-rate math requires every symbol to appear, so
+            # this must be its own filter: a declared symbol that never
+            # appears anywhere is dead weight in the paytable, not a
+            # reasonable output. Checked before the (comparatively expensive)
+            # engine.evaluate call so a doomed candidate is skipped cheaply.
+            if {s for reel in reels for s in reel} != set(spec.symbols):
+                continue
             distribution = engine.evaluate(
                 spec, reels, budget=options.signature_budget
             )

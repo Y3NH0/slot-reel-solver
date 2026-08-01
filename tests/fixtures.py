@@ -9,6 +9,13 @@ divisible by 5), so it is the only one that catches a solver which silently
 assumes n1 = 0. It is also the only fixture with win_rate = 1. B and C both
 have 5 | N and n1 = 0 and would let that regression through.
 See spec section 4.3.
+
+Symbol coverage is ALSO deliberately uneven across the three, and this is
+load-bearing for tests/test_verify.py's all_symbols_used gate tests: A uses
+all five declared symbols {0,1,2,3,4}; B never uses 1 or 4; C never uses 0.
+Do not "complete" B or C's symbol coverage without updating those tests --
+they specifically exercise "hits RTP/win-rate exactly but a symbol is
+unused" using B and C as the real, pre-existing data for that case.
 """
 
 from dataclasses import dataclass

@@ -58,7 +58,10 @@ def test_valid_gamespec_exits_zero(capsys):
 
 
 def test_good_solution_exits_zero(tmp_path):
-    path = write_solution(tmp_path, GOLDEN[2])
+    # Fixture A: the only golden fixture using all five declared symbols (B
+    # and C each omit one -- see tests/test_verify.py), so it's the one that
+    # passes the all_symbols_used gate and every other gate outright.
+    path = write_solution(tmp_path, GOLDEN[0])
     code, err = verify_on_write.main(payload(path))
     assert code == 0, err
 

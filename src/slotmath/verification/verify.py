@@ -87,7 +87,8 @@ def verify(
         gates.append(Gate(name=name, passed=passed, severity=severity, detail=detail))
 
     # ---- symbols declared -------------------------------------------------
-    unknown = sorted({s for reel in config.reels for s in reel} - set(spec.symbols))
+    used_symbols = {s for reel in config.reels for s in reel}
+    unknown = sorted(used_symbols - set(spec.symbols))
     add(
         "symbols_declared",
         not unknown,
@@ -96,6 +97,21 @@ def verify(
     )
     if unknown:
         return VerifyReport(gates=gates, passed=False)
+
+    # ---- every declared symbol is used -------------------------------------
+    # The converse of symbols_declared: a symbol nobody's reels ever land on
+    # is dead weight in the paytable -- legal under the letter of most specs,
+    # but not a reasonable output. Not short-circuited like symbols_declared:
+    # an undeclared symbol makes payout computation itself suspect, but a
+    # missing declared symbol doesn't stop Layers 1-3 from computing
+    # correctly, so they still run and report their own status independently.
+    missing = sorted(set(spec.symbols) - used_symbols)
+    add(
+        "all_symbols_used",
+        not missing,
+        "every declared symbol appears in at least one reel" if not missing
+        else f"declared symbols never appear in any reel: {missing}",
+    )
 
     # ---- Layer 1: file internal consistency -------------------------------
     m = config.metrics

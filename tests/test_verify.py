@@ -23,10 +23,38 @@ def config_for(g, **over):
     return ReelConfig.model_validate(data)
 
 
-@pytest.mark.parametrize("g", GOLDEN, ids=[g.name for g in GOLDEN])
-def test_golden_configs_pass_every_gate(g):
-    report = verify(hw(), config_for(g), **MC)
+def test_golden_config_with_full_symbol_coverage_passes_every_gate():
+    """Fixture A is the only golden fixture that uses all five declared
+    symbols somewhere in its reels (B never uses 1 or 4; C never uses 0 --
+    see the two tests below), so it is the one that must pass outright."""
+    report = verify(hw(), config_for(GOLDEN[0]), **MC)
     assert report.passed, report.render()
+
+
+def test_all_symbols_used_passes_when_every_symbol_appears():
+    report = verify(hw(), config_for(GOLDEN[0]), **MC)
+    gate = next(g for g in report.gates if g.name == "all_symbols_used")
+    assert gate.passed
+
+
+@pytest.mark.parametrize(
+    "g,missing", [(GOLDEN[1], [1, 4]), (GOLDEN[2], [0])], ids=["B", "C"]
+)
+def test_golden_configs_missing_a_symbol_fail_with_a_clear_message(g, missing):
+    """Fixtures B and C each hit RTP=19/20 and their homework win-rate target
+    exactly, but B's reels never contain symbols 1 or 4, and C's reels never
+    contain symbol 0 (see tests/fixtures.py). A symbol declared in the spec
+    but never reachable on any reel is dead weight in the paytable -- this
+    must be reported as an invalid configuration, naming the missing
+    symbol(s), not silently accepted just because RTP/win-rate are on target."""
+    report = verify(hw(), config_for(g), **MC)
+    assert not report.passed
+    gate = next(gt for gt in report.gates if gt.name == "all_symbols_used")
+    assert not gate.passed
+    for sym in missing:
+        assert str(sym) in gate.detail, (
+            f"expected missing symbol {sym} named in the gate detail: {gate.detail!r}"
+        )
 
 
 def test_undeclared_symbol_fails():
