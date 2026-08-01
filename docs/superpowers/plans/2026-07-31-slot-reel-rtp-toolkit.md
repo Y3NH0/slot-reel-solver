@@ -1952,7 +1952,18 @@ def _load_json(path: Path, stderr) -> dict:
         print(f"{path}: not found", file=stderr)
         raise SystemExit(2)
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        text = path.read_text(encoding="utf-8")
+    except OSError as exc:
+        # Covers IsADirectoryError, PermissionError and friends. Without this a
+        # directory argument escapes as an uncaught traceback and exits 1,
+        # which reads to an automated caller as "the solution is wrong".
+        print(f"{path}: cannot read ({exc.strerror})", file=stderr)
+        raise SystemExit(2)
+    except UnicodeDecodeError:
+        print(f"{path}: not valid UTF-8 text", file=stderr)
+        raise SystemExit(2)
+    try:
+        return json.loads(text)
     except json.JSONDecodeError as exc:
         print(f"{path}: invalid JSON at line {exc.lineno}: {exc.msg}", file=stderr)
         raise SystemExit(2)
@@ -2038,8 +2049,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("path")
     p.set_defaults(func=_cmd_report)
 
-    args = parser.parse_args(argv)
+    # parse_args must sit INSIDE the try: argparse raises SystemExit on an
+    # unknown subcommand, and main() is called in-process by the tests and by
+    # the Task 13 hook, both of which expect an int back rather than an
+    # exception.
     try:
+        args = parser.parse_args(argv)
         return args.func(args, out, err)
     except SystemExit as exc:
         return int(exc.code)
