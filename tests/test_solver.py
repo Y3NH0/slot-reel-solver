@@ -1,5 +1,7 @@
+import json
 import time
 from fractions import Fraction
+from pathlib import Path
 
 import pytest
 
@@ -92,6 +94,31 @@ def test_solve_records_the_command_that_reproduces_it():
     assert config is not None
     assert "1234" in config.solver["command"]
     assert config.solver["seed"] == 1234
+
+
+def test_solve_records_the_real_input_path_when_solving_from_outside_configs(tmp_path):
+    """Finding 3: solve() used to hardcode spec=f"configs/{spec.name}.json"
+    regardless of where the input actually came from. Solve from a spec
+    living outside configs/ entirely and confirm the returned ReelConfig.spec
+    and solver.command both point at the real path, not a fabricated one --
+    and that the resulting artifact verifies from an arbitrary cwd because
+    the referenced spec path is genuinely correct."""
+    real_spec_path = tmp_path / "somewhere" / "mygame.json"
+    real_spec_path.parent.mkdir(parents=True)
+    real_spec_path.write_text(
+        Path("configs/homework-3x3.json").read_text(encoding="utf-8"), encoding="utf-8"
+    )
+    spec = load_spec(real_spec_path)
+
+    config = solve(spec, SolverOptions(seed=500, spec_path=str(real_spec_path)))
+
+    assert config is not None
+    assert config.spec == str(real_spec_path)
+    assert str(real_spec_path) in config.solver["command"]
+    assert "configs/homework-3x3.json" not in config.solver["command"]
+
+    report = verify(spec, config, mc_spins=50_000)
+    assert report.passed, report.render()
 
 
 def test_solve_returns_none_rather_than_hanging_on_an_impossible_target():

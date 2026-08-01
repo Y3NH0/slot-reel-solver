@@ -59,10 +59,28 @@ def main(stdin_text: str) -> tuple[int, str]:
     except json.JSONDecodeError as exc:
         return 2, f"{path}: invalid JSON at line {exc.lineno}: {exc.msg}\n"
 
-    from pydantic import ValidationError
+    # The evaluation stack (pydantic, slotmath.spec, slotmath.verify) is a
+    # heavy import that only ever needs to happen once we know the write
+    # actually touched a watched JSON file, which is why it lives here and
+    # not at module scope (see the module docstring's "fast path" note).
+    # If it fails -- most commonly because this hook is being run through an
+    # interpreter that lacks the project's dependencies rather than through
+    # .venv -- that must degrade to a readable message, not a raw
+    # ModuleNotFoundError traceback that looks like the artifact is broken.
+    try:
+        from pydantic import ValidationError
 
-    from slotmath.spec import GameSpec, load_spec
-    from slotmath.verify import ReelConfig, verify
+        from slotmath.spec import GameSpec, load_spec
+        from slotmath.verify import ReelConfig, verify
+    except ImportError as exc:
+        return 2, (
+            f"verify_on_write hook cannot import the slotmath package "
+            f"({exc}). This almost always means the hook is running under "
+            "an interpreter without the project installed -- check "
+            ".claude/settings.json points its PostToolUse command at the "
+            "project virtualenv (e.g. .venv/bin/python), not a bare "
+            "'python3'.\n"
+        )
 
     # A GameSpec has "grid"; a ReelConfig has "reels".
     if "grid" in data and "reels" not in data:
@@ -81,7 +99,20 @@ def main(stdin_text: str) -> tuple[int, str]:
     if not spec_path.exists():
         return 2, f"{path}: referenced spec {config.spec} not found\n"
 
-    report = verify(load_spec(spec_path), config, mc_spins=HOOK_MC_SPINS)
+    # slotmath.cli._load_pair has the equivalent guard; keep both in sync.
+    # Deliberately not shared code -- see the module docstring on why this
+    # hook does not import from slotmath.cli.
+    try:
+        spec = load_spec(spec_path)
+    except json.JSONDecodeError as exc:
+        return 2, (
+            f"{path}: referenced spec {config.spec} is invalid JSON at "
+            f"line {exc.lineno}: {exc.msg}\n"
+        )
+    except ValidationError as exc:
+        return 2, f"{path}: referenced spec {config.spec} is invalid\n{exc}\n"
+
+    report = verify(spec, config, mc_spins=HOOK_MC_SPINS)
     if report.passed:
         return 0, ""
     return 2, f"{path} failed verification:\n{report.render()}\n"

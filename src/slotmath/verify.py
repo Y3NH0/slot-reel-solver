@@ -14,14 +14,39 @@ reporting.
 
 from __future__ import annotations
 
+import math
 from fractions import Fraction
 from typing import Literal
 
 from pydantic import BaseModel
 
 from slotmath import engine, montecarlo, naive
+from slotmath.engine import SignatureBudgetExceeded
 from slotmath.metrics import Metrics, build_metrics, exact_rtp, exact_win_rate
 from slotmath.spec import GameSpec
+
+# naive.evaluate has no bound of its own: its cost is exactly
+# prod(len(reel) for reel in reels) (a full cyclic enumeration), which can be
+# enormous even when engine.evaluate's signature-product budget is satisfied
+# -- a long reel with many distinct symbols keeps the *signature* count small
+# while the *stop* count stays huge (three 500-symbol reels is
+# 500**3 = 125_000_000 board combinations, roughly 200 seconds of naive
+# enumeration, yet may sit well inside engine's default 5_000_000 signature
+# budget). This budget is checked directly against naive's own cost driver
+# -- prod(reel lengths) -- so the guard holds regardless of how the engine's
+# unrelated signature-space budget happens to land. Matches engine.evaluate's
+# default budget for consistency; it is not derived from it.
+NAIVE_BUDGET = 5_000_000
+
+# Layer 1 float checks compare *display* floats (rtp/win_rate/volatility/
+# max_win) against values derived from the integer counts. These floats
+# round-trip through JSON via repr(), which is exact for the shortest decimal
+# but can still differ in the last bit or two after arithmetic (sqrt for
+# volatility in particular). A tight relative tolerance catches a forged or
+# stale float without flagging harmless round-trip noise. This tolerance is
+# strictly for these display checks -- the RTP-vs-target comparison a few
+# lines down remains exact Fraction equality with no tolerance at all.
+_FLOAT_RTOL = 1e-9
 
 
 class ReelConfig(BaseModel):
@@ -106,6 +131,46 @@ def verify(
         if bucket.payout_units / m.payout_unit_denominator != bucket.payout:
             problems.append(f"bucket {bucket.payout_units} payout float is inconsistent")
 
+    # The four derived floats below are documented as checked here (see module
+    # docstring); they were previously read straight from the file and never
+    # compared against anything, so a forged rtp/win_rate/volatility/max_win
+    # sailed through Layer 1. Compare each against a value derived from the
+    # integer counts that are the actual source of truth, with the tolerance
+    # explained at _FLOAT_RTOL above.
+    if m.spin_count:
+        expected_win_rate = m.win_count / m.spin_count
+        if not math.isclose(m.win_rate, expected_win_rate, rel_tol=_FLOAT_RTOL):
+            problems.append(
+                f"win_rate {m.win_rate} != win_count/spin_count "
+                f"{expected_win_rate}"
+            )
+
+        expected_rtp = m.total_payout_units / (m.payout_unit_denominator * m.spin_count)
+        if not math.isclose(m.rtp, expected_rtp, rel_tol=_FLOAT_RTOL):
+            problems.append(
+                f"rtp {m.rtp} != total_payout_units/(payout_unit_denominator * "
+                f"spin_count) {expected_rtp}"
+            )
+
+        expected_max_win = (max(dist) / m.payout_unit_denominator) if dist else 0.0
+        if not math.isclose(m.max_win, expected_max_win, rel_tol=_FLOAT_RTOL):
+            problems.append(
+                f"max_win {m.max_win} != max(payout_units)/payout_unit_denominator "
+                f"{expected_max_win}"
+            )
+
+        mean = Fraction(m.total_payout_units, m.payout_unit_denominator * m.spin_count)
+        variance = sum(
+            count * (Fraction(units, m.payout_unit_denominator) - mean) ** 2
+            for units, count in dist.items()
+        ) / m.spin_count
+        expected_volatility = math.sqrt(float(variance))
+        if not math.isclose(m.volatility, expected_volatility, rel_tol=_FLOAT_RTOL):
+            problems.append(
+                f"volatility {m.volatility} != sqrt(variance of payout_units / "
+                f"payout_unit_denominator) {expected_volatility}"
+            )
+
     add(
         "file_consistency",
         not problems,
@@ -115,8 +180,38 @@ def verify(
         return VerifyReport(gates=gates, passed=False)
 
     # ---- Layer 2: engine vs naive vs file ---------------------------------
+    # naive.evaluate is unbounded (prod(reel lengths)), so its cost is
+    # checked directly, before it is ever called -- see NAIVE_BUDGET above.
+    board_size = 1
+    for reel in config.reels:
+        board_size *= len(reel)
+    if board_size > NAIVE_BUDGET:
+        add(
+            "engine_matches_naive",
+            False,
+            f"full enumeration would need {board_size} board combinations, "
+            f"over the safety budget of {NAIVE_BUDGET}; refusing to run "
+            "naive.evaluate. This is not a verdict on the artifact -- rerun "
+            "outside the hook with a deliberately raised budget if you need "
+            "to verify a config this large.",
+        )
+        return VerifyReport(gates=gates, passed=False)
+
+    # engine.evaluate is also called FIRST, ahead of naive: it raises
+    # SignatureBudgetExceeded before doing any enumeration work once its own
+    # (much smaller, signature-space) budget is exceeded. With the
+    # board_size check above already bounding naive's cost, this mostly
+    # covers pathological signature layouts within an otherwise-small board.
+    try:
+        engine_dist = engine.evaluate(spec, config.reels)
+    except SignatureBudgetExceeded as exc:
+        add(
+            "engine_matches_naive",
+            False,
+            f"signature space too large to evaluate safely: {exc}",
+        )
+        return VerifyReport(gates=gates, passed=False)
     naive_dist = naive.evaluate(spec, config.reels)
-    engine_dist = engine.evaluate(spec, config.reels)
 
     engines_agree = naive_dist == engine_dist
     add(

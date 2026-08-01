@@ -22,7 +22,9 @@ For a thorough pass, widen the simulation:
 slotmath verify solutions/<name>.json --mc-spins 20000000
 ```
 
-2. Read the exit code as a contract.
+2. Read the exit code as a contract: exit 0 means every hard gate passed,
+   exit 1 means verification did not pass, exit 2 means the verifier itself
+   could not run.
 
 | exit | meaning | what to do |
 | --- | --- | --- |

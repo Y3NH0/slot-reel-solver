@@ -167,24 +167,47 @@ def test_should_admit_without_calibration_admits_everything():
     assert should_admit(p, metrics_for(c), 0.25)
 
 
-def test_admission_is_order_independent_given_fixed_calibration():
-    reference = _metrics(0.90, 1.0, 50, {0: 50, 20: 50}, 500)
-    near_duplicate = _metrics(0.905, 1.0, 50, {0: 50, 20: 50}, 500)
-    distinct = _metrics(0.10, 0.2, 3, {0: 900, 20: 100}, 500)
+def test_normalisation_of_a_single_candidate_does_not_depend_on_call_order():
+    """What IS order-independent (module docstring, narrowed claim): each
+    candidate's normalisation uses the fixed calibrated ranges, never ranges
+    derived from whatever else is currently under comparison. So a single
+    vector normalises to the same point regardless of what other vectors
+    happen to be passed alongside it in the same `normalise` call."""
+    a = _metrics(0.30, 2.5, 50, {0: 50, 20: 50}, 500)
+    b = _metrics(0.55, 2.5, 50, {0: 50, 20: 50}, 500)
+    ranges = CALIBRATION["ranges"]
+    solo = normalise([features(a)], ranges=ranges)[0]
+    alongside = normalise([features(a), features(b)], ranges=ranges)[0]
+    assert solo == pytest.approx(alongside)
 
-    def admitted_win_rates(order):
-        p = Portfolio(entries=[_config(reference)], calibration=CALIBRATION)
-        admitted = []
-        for m in order:
-            if should_admit(p, m, 0.25):
+
+def test_greedy_admission_is_order_dependent_despite_fixed_calibration():
+    """The caveat the module docstring narrows down to: fixing the
+    normalisation scale does NOT make the overall admission *decisions*
+    order-independent, because should_admit is greedy against whatever is
+    already in the portfolio. A and B are near-duplicates of each other; C
+    is far from A but close enough to B to be blocked by it. Offering them
+    as A, B, C admits {A, C} (A blocks B; C clears A). Offering the same
+    three as B, A, C admits only {B} (B blocks both A and C). Same
+    candidates, same fixed calibration, different admitted sets -- this is
+    the counterexample the module docstring now documents instead of
+    (wrongly) claiming order never matters."""
+    a = _metrics(0.30, 2.5, 50, {0: 50, 20: 50}, 500)
+    b = _metrics(0.55, 2.5, 50, {0: 50, 20: 50}, 500)
+    c = _metrics(0.5132, 3.888, 50, {0: 50, 20: 50}, 500)
+    threshold = 0.30
+
+    def admitted(order, names):
+        p = Portfolio(entries=[], calibration=CALIBRATION)
+        result = []
+        for m, name in zip(order, names):
+            if should_admit(p, m, threshold):
                 p.entries.append(_config(m))
-                admitted.append(m.win_rate)
-        return admitted
+                result.append(name)
+        return result
 
-    assert (
-        admitted_win_rates([near_duplicate, distinct])
-        == admitted_win_rates([distinct, near_duplicate])
-    )
+    assert admitted([a, b, c], ["A", "B", "C"]) == ["A", "C"]
+    assert admitted([b, a, c], ["B", "A", "C"]) == ["B"]
 
 
 def test_calibrate_returns_a_threshold_inside_the_observed_range():

@@ -17,7 +17,8 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
-from slotmath.metrics import exact_rtp, exact_win_rate
+from slotmath import naive
+from slotmath.metrics import build_metrics, exact_rtp, exact_win_rate
 from slotmath.spec import GameSpec, load_spec
 from slotmath.verify import ReelConfig, verify
 
@@ -74,7 +75,15 @@ def _load_pair(args, err) -> tuple[GameSpec, ReelConfig]:
     if not spec_path.exists():
         print(f"{config.spec}: referenced spec not found", file=err)
         raise SystemExit(2)
-    return load_spec(spec_path), config
+    try:
+        spec = load_spec(spec_path)
+    except json.JSONDecodeError as exc:
+        print(f"{config.spec}: invalid JSON at line {exc.lineno}: {exc.msg}", file=err)
+        raise SystemExit(2)
+    except ValidationError as exc:
+        print(f"{config.spec}: invalid GameSpec\n{exc}", file=err)
+        raise SystemExit(2)
+    return spec, config
 
 
 def _cmd_verify(args, out, err) -> int:
@@ -86,7 +95,17 @@ def _cmd_verify(args, out, err) -> int:
 
 def _cmd_report(args, out, err) -> int:
     spec, config = _load_pair(args, err)
-    m = config.metrics
+    # Render from a fresh recomputation, never from config.metrics: the file
+    # is untrusted input (see finding 2 -- Layer 1 forgot to check the very
+    # floats this command used to print verbatim), so build the table from
+    # naive.evaluate's distribution and build_metrics(), which can only ever
+    # report what the reels actually produce.
+    try:
+        distribution = naive.evaluate(spec, config.reels)
+    except ValueError as exc:
+        print(f"{args.path}: cannot evaluate reels: {exc}", file=err)
+        return 2
+    m = build_metrics(spec, distribution)
     print(f"spec: {config.spec}", file=out)
     for i, reel in enumerate(config.reels):
         print(f"reel{i} (len {len(reel)}): {reel}", file=out)
@@ -122,6 +141,7 @@ def _cmd_solve(args, out, err) -> int:
             max_len=args.max_len,
             max_seeds=args.max_seeds,
             max_candidates=args.max_candidates,
+            spec_path=args.path,
         ),
     )
     if config is None:
@@ -165,11 +185,15 @@ def _cmd_explore(args, out, err) -> int:
         return 2
 
     store = Path(args.portfolio)
-    portfolio = (
-        Portfolio.model_validate_json(store.read_text(encoding="utf-8"))
-        if store.exists()
-        else Portfolio(entries=[], calibration=None)
-    )
+    if store.exists():
+        portfolio_data = _load_json(store, err)
+        try:
+            portfolio = Portfolio.model_validate(portfolio_data)
+        except ValidationError as exc:
+            print(f"{store}: invalid Portfolio\n{exc}", file=err)
+            return 2
+    else:
+        portfolio = Portfolio(entries=[], calibration=None)
 
     if args.recalibrate:
         if recalibrate(portfolio):
@@ -179,7 +203,9 @@ def _cmd_explore(args, out, err) -> int:
 
     admitted = 0
     for round_index in range(args.rounds):
-        config = solve(spec, SolverOptions(seed=args.seed + round_index))
+        config = solve(
+            spec, SolverOptions(seed=args.seed + round_index, spec_path=args.path)
+        )
         if config is None:
             print(f"round {round_index}: no config found", file=out)
             continue

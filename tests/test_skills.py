@@ -46,9 +46,8 @@ def test_no_skill_uses_the_banned_vocabulary():
 
 def test_verifier_skill_states_the_exit_code_contract():
     text = Path(".claude/skills/slot-config-verifier/SKILL.md").read_text(encoding="utf-8")
-    for code in ("0", "1", "2"):
-        assert code in text
-    assert "exit" in text.lower()
+    for phrase in ("exit 0", "exit 1", "exit 2"):
+        assert phrase in text
 
 
 def test_solver_skill_records_the_diophantine_limitation():

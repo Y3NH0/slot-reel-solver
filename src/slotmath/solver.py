@@ -39,6 +39,13 @@ class SolverOptions(BaseModel):
     max_candidates: int = 40_000
     signature_budget: int = 5_000_000
     max_seeds: int = 400
+    # The path the GameSpec was actually loaded from, so the returned
+    # ReelConfig.spec and solver.command can reference it truthfully instead
+    # of guessing configs/<spec.name>.json. None only when a caller
+    # constructs a GameSpec in memory with no backing file (e.g. tests);
+    # the CLI always sets this to the real input path (see _cmd_solve /
+    # _cmd_explore in cli.py).
+    spec_path: str | None = None
 
 
 def required_units(spec: GameSpec, spin_count: int) -> int:
@@ -169,17 +176,15 @@ def solve(spec: GameSpec, options: SolverOptions) -> ReelConfig | None:
             if exact_win_rate(metrics) < spec.targets.min_win_rate:
                 continue
 
+            spec_path = options.spec_path or f"configs/{spec.name}.json"
             return ReelConfig(
-                spec=f"configs/{spec.name}.json",
+                spec=spec_path,
                 reels=[list(r) for r in reels],
                 metrics=metrics,
                 solver={
                     "version": VERSION,
                     "seed": options.seed,
-                    "command": (
-                        f"slotmath solve configs/{spec.name}.json "
-                        f"--seed {options.seed}"
-                    ),
+                    "command": f"slotmath solve {spec_path} --seed {options.seed}",
                 },
             )
     return None

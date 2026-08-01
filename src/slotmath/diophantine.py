@@ -161,7 +161,10 @@ def search_last_reel(
     if lo > max_len:
         return None
 
-    # Uniform strips first: cheap, and they produced golden fixtures B and C.
+    # Uniform strips first: cheap, and they produced golden fixtures A and B
+    # (both solved via route 2, a zero weight -- see the module docstring).
+    # Fixture C's last reel is not uniform ([4,3,2,2,1,3,2,2,2,2]); it is
+    # solved via route 1 (mixed signs) further down, in the random search.
     for length in range(lo, max_len + 1):
         for symbol in symbols:
             candidate = [symbol] * length

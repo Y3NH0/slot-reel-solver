@@ -39,6 +39,8 @@ def build_metrics(spec: GameSpec, distribution: dict[int, int]) -> Metrics:
 
     denominator = spec.payout_unit_denominator()
     spin_count = sum(distribution.values())
+    if spin_count == 0:
+        raise ValueError("payout distribution has zero total spins")
     win_count = spin_count - distribution.get(0, 0)
     total_units = sum(units * count for units, count in distribution.items())
 

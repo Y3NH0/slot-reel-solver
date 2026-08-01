@@ -60,22 +60,34 @@ def test_stale_metrics_fail_with_recompute_message_not_engine_bug_message():
     """Engines agree with each other but not with the file: that is a stale
     artifact, not a program bug. The two must be reported differently.
 
-    The shift is between the two *non-zero* buckets (20 and 100 units) so the
-    zero bucket -- and therefore win_count, which is derived from it -- stays
-    untouched. That keeps the mutated metrics internally self-consistent
-    (Layer 1 must NOT fire); only the comparison against a fresh recompute
-    should fail (Layer 2). Shifting a combo out of the zero bucket instead
-    would desync win_count from the (unchanged) zero-bucket count and trip
+    The fabricated distribution shifts one combo between the two *non-zero*
+    buckets (20 and 100 units) so the zero bucket -- and therefore
+    win_count, which is derived from it -- stays untouched. Running it
+    through build_metrics() (rather than hand-editing individual Metrics
+    fields) makes every derived float (rtp, volatility, total_payout_units)
+    self-consistent with the fabricated counts, so Layer 1's file_consistency
+    gate -- which now checks those floats too (see verify.py) -- must NOT
+    fire; only the comparison against a fresh recompute from the actual
+    reels should fail (Layer 2). Hand-editing total_payout_units alone
+    without also updating rtp/volatility would (correctly, post-fix) trip
     file_consistency before Layer 2 is ever reached, conflating a stale
-    artifact with a corrupted one.
+    artifact with a corrupted one -- which is exactly why this test builds a
+    self-consistent fabrication instead.
     """
     g = GOLDEN[2]
-    cfg = config_for(g)
-    cfg.metrics.total_payout_units -= 80
-    cfg.metrics.payout_distribution[1].combo_count += 1
-    cfg.metrics.payout_distribution[2].combo_count -= 1
-    report = verify(hw(), cfg, **MC)
+    spec = hw()
+    fabricated = dict(g.distribution)
+    fabricated[20] += 1
+    fabricated[100] -= 1
+    metrics = build_metrics(spec, fabricated)
+    cfg = ReelConfig.model_validate({
+        "spec": "configs/homework-3x3.json",
+        "reels": g.reels,
+        "metrics": metrics.model_dump(),
+    })
+    report = verify(spec, cfg, **MC)
     failed = {gate.name for gate in report.gates if not gate.passed}
+    assert "file_consistency" not in failed
     assert "file_matches_recompute" in failed
     assert "engine_matches_naive" not in failed
 
@@ -108,6 +120,7 @@ def test_win_rate_below_minimum_fails():
     })
     report = verify(spec, cfg, **MC)
     assert any(gate.name == "min_win_rate" and not gate.passed for gate in report.gates)
+    assert report.passed is False
 
 
 def test_win_rate_of_one_produces_a_warning_but_still_passes():

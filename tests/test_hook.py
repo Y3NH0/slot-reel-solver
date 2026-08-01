@@ -1,6 +1,7 @@
 import json
 import os
 import stat
+import subprocess
 import sys
 from pathlib import Path
 
@@ -97,6 +98,55 @@ def test_directory_path_exits_two_not_traceback(tmp_path):
     assert code == 2
     assert "Traceback" not in err
     assert str(adir) in err
+
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+def test_hook_runs_as_a_subprocess_through_the_configured_command():
+    """The 13 other tests in this file all call verify_on_write.main()
+    directly, which never exercises the actual command string configured in
+    .claude/settings.json -- that command is what really runs on every
+    write. Finding 1 was exactly this gap: the configured command
+    ('python3 scripts/hooks/verify_on_write.py') pointed at a pyenv shim
+    with no slotmath installed, so every real hook invocation died with
+    ModuleNotFoundError before any of main()'s logic ran, and none of the
+    in-process tests could ever have caught it. Run the literal configured
+    command as a subprocess and confirm it actually works."""
+    settings = json.loads((REPO_ROOT / ".claude/settings.json").read_text(encoding="utf-8"))
+    command = settings["hooks"]["PostToolUse"][0]["hooks"][0]["command"]
+    command = command.replace("${CLAUDE_PROJECT_DIR}", str(REPO_ROOT))
+    result = subprocess.run(
+        command,
+        shell=True,
+        cwd=str(REPO_ROOT),
+        input=payload(REPO_ROOT / "configs/homework-3x3.json"),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "Traceback" not in result.stderr
+
+
+def test_hook_degrades_readably_when_the_evaluation_stack_cannot_import():
+    """Deterministically reproduces 'the hook's interpreter lacks slotmath'
+    without depending on any particular system python3's site-packages:
+    running under -S disables site-packages initialisation entirely, so the
+    lazily-imported pydantic/slotmath fail exactly the way they would under
+    a bare interpreter. main() must turn that into a readable exit-2
+    message, per finding 1's fix, not let a raw traceback escape."""
+    result = subprocess.run(
+        [sys.executable, "-S", str(REPO_ROOT / "scripts/hooks/verify_on_write.py")],
+        cwd=str(REPO_ROOT),
+        input=payload(REPO_ROOT / "configs/homework-3x3.json"),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 2
+    assert "Traceback" not in result.stderr
+    assert "slotmath" in result.stderr.lower()
 
 
 @pytest.mark.skipif(

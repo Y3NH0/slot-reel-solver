@@ -41,9 +41,26 @@ reintroduce the same bug in a different shape. Admitting everything until
 calibration exists is a documented, deliberate no-op, not a silent failure.
 
 Because the stored ranges are fixed and do not depend on what else happens
-to be in the portfolio at the time of the call, admission decisions are
-order-independent: offering the same candidates in a different order does
-not change which ones end up admitted.
+to be in the portfolio at the time of the call, each individual comparison
+uses a fixed scale: normalising a candidate never depends on which other
+candidates happen to be under consideration alongside it, or on the order
+`explore` happened to offer them in.
+
+That is NOT the same as saying the overall admission *decisions* are
+order-independent -- they are not. `should_admit` is greedy: it compares a
+candidate against whatever is already in the portfolio at that moment, and
+each admitted candidate becomes part of the "existing" set for every
+candidate considered after it. Two candidates that are mutually too close
+together (distance < threshold) but each individually far enough from a
+third can end up admitting different subsets depending on which one arrives
+first -- whichever is admitted first blocks the other, and the survivor
+differs by order. Concretely, with three candidates A, B, C, a threshold of
+0.30, and pairwise distances chosen so A and B are near-duplicates of each
+other but each far from C: offering them as A, B, C admits {A, C} (A is
+admitted first and blocks B; C is far from both); offering them as B, A, C
+admits only {B} (B is admitted first and blocks both A and C, if C also
+happens to sit within the threshold of B). The *scale* is fixed and
+order-independent; the *greedy admission sequence* is not.
 
 The calibration pass itself
 ----------------------------
