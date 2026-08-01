@@ -13,10 +13,27 @@ Then RTP equals the target exactly iff
 where n_s counts the positions in the last reel carrying signature s. The
 last reel's length is sum_s n_s -- it is solved for, not guessed.
 
-Existence: whenever {w_s} contains both a positive and a negative value a
-nonzero non-negative solution exists (take n_p = |w_q|, n_q = w_p). Both signs
-always occur, because there is always an almost-always-winning signature and
-an almost-never-winning one.
+Existence has two independent routes, and neither is guaranteed:
+
+1. Mixed signs. If some w_p > 0 and some w_q < 0, a nonzero non-negative
+   solution exists: take n_p = |w_q|, n_q = w_p.
+2. A zero weight. If some w_z == 0, put the entire last reel on signature z,
+   at any length -- a uniform strip already solves the equation.
+
+Neither route is guaranteed to be present. It is possible for every w_s to
+share a sign with no zero among them, in which case that particular choice of
+fixed reels admits no solution and a caller must move on (try different fixed
+reels) rather than keep searching -- an unbounded search over a pair with no
+solution will never terminate.
+
+In practice both routes show up across the golden fixtures: fixtures A and B
+have no positive weight at all (mixed_signs is False) and are solved via
+route 2, because their last reel is uniform and that single signature's
+weight happens to be zero; fixture C has both a positive and a negative
+weight (mixed_signs is True) and is solved via route 1. search_last_reel
+tries uniform strips first specifically because that is a cheap, direct probe
+of route 2 -- which is why it finds A- and B-shaped solutions almost
+immediately.
 
 LIMITATION -- do not paper over this: a signature histogram is NOT freely
 realizable. A run of k identical symbols forces k-2 triple signatures plus two

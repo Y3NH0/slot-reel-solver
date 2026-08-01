@@ -40,6 +40,19 @@ def test_weights_have_both_signs_so_a_solution_exists():
     assert has_mixed_signs(weights)
 
 
+def test_mixed_signs_is_not_guaranteed_across_golden_fixed_reels():
+    """Existence has two independent routes: mixed signs (fixture C) or a
+    zero weight reached by a uniform last reel (fixtures A and B, whose
+    weights are all <= 0 with none positive -- has_mixed_signs is False).
+    Pins the real sign structure so a change to signature_weights that
+    silently drops route 2 would be caught here."""
+    spec = hw()
+    expected = {"A": False, "B": False, "C": True}
+    for g in GOLDEN:
+        weights = signature_weights(spec, g.reels[:-1])
+        assert has_mixed_signs(weights) == expected[g.name]
+
+
 def test_all_same_signature_outweighs_a_dead_signature():
     spec = hw()
     weights = signature_weights(spec, GOLDEN[2].reels[:-1])
