@@ -100,6 +100,34 @@ def _cmd_report(args, out, err) -> int:
     return 0
 
 
+def _cmd_solve(args, out, err) -> int:
+    from slotmath.solver import SolverOptions, solve
+
+    data = _load_json(Path(args.path), err)
+    try:
+        spec = GameSpec.model_validate(data)
+    except ValidationError as exc:
+        print(f"{args.path}: invalid GameSpec\n{exc}", file=err)
+        return 2
+
+    config = solve(
+        spec,
+        SolverOptions(seed=args.seed, min_len=args.min_len, max_len=args.max_len),
+    )
+    if config is None:
+        print("no configuration found within the search budget", file=err)
+        return 1
+
+    payload = json.loads(config.model_dump_json())
+    if args.out:
+        Path(args.out).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.out).write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        print(f"wrote {args.out}", file=out)
+    else:
+        print(json.dumps(payload, indent=2), file=out)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     import sys
 
@@ -120,6 +148,14 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("report", help="print a human readable payout table")
     p.add_argument("path")
     p.set_defaults(func=_cmd_report)
+
+    p = sub.add_parser("solve", help="search for a reel config meeting the targets")
+    p.add_argument("path")
+    p.add_argument("--seed", type=int, default=20260731)
+    p.add_argument("--min-len", type=int, default=3)
+    p.add_argument("--max-len", type=int, default=16)
+    p.add_argument("--out", default=None)
+    p.set_defaults(func=_cmd_solve)
 
     try:
         args = parser.parse_args(argv)

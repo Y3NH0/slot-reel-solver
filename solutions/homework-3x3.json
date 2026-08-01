@@ -1,0 +1,55 @@
+{
+  "spec": "configs/homework-3x3.json",
+  "reels": [
+    [
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1
+    ]
+  ],
+  "metrics": {
+    "spin_count": 120,
+    "win_count": 120,
+    "win_rate": 1.0,
+    "total_payout_units": 2280,
+    "payout_unit_denominator": 20,
+    "rtp": 0.95,
+    "volatility": 0.458257569495584,
+    "max_win": 1.25,
+    "payout_distribution": [
+      {
+        "payout_units": 5,
+        "payout": 0.25,
+        "combo_count": 36
+      },
+      {
+        "payout_units": 25,
+        "payout": 1.25,
+        "combo_count": 84
+      }
+    ]
+  },
+  "solver": {
+    "version": "0.1.0",
+    "seed": 20260731,
+    "command": "slotmath solve configs/homework-3x3.json --seed 20260731"
+  }
+}
