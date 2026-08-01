@@ -112,7 +112,13 @@ def _cmd_solve(args, out, err) -> int:
 
     config = solve(
         spec,
-        SolverOptions(seed=args.seed, min_len=args.min_len, max_len=args.max_len),
+        SolverOptions(
+            seed=args.seed,
+            min_len=args.min_len,
+            max_len=args.max_len,
+            max_seeds=args.max_seeds,
+            max_candidates=args.max_candidates,
+        ),
     )
     if config is None:
         print("no configuration found within the search budget", file=err)
@@ -154,6 +160,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--seed", type=int, default=20260731)
     p.add_argument("--min-len", type=int, default=3)
     p.add_argument("--max-len", type=int, default=16)
+    p.add_argument("--max-seeds", type=int, default=400)
+    p.add_argument("--max-candidates", type=int, default=40_000)
     p.add_argument("--out", default=None)
     p.set_defaults(func=_cmd_solve)
 

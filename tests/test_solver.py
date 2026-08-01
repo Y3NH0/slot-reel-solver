@@ -1,3 +1,4 @@
+import time
 from fractions import Fraction
 
 import pytest
@@ -96,3 +97,23 @@ def test_solve_records_the_command_that_reproduces_it():
 def test_solve_returns_none_rather_than_hanging_on_an_impossible_target():
     spec = hw(targets={"rtp": 1000, "min_win_rate": 0.55})
     assert solve(spec, SolverOptions(seed=1, max_seeds=2, max_candidates=200)) is None
+
+
+def test_solve_terminates_on_an_impossible_target_near_the_cli_defaults():
+    """The CLI's real defaults are max_seeds=400, max_candidates=40_000 (see
+    SolverOptions and the `solve` subcommand); the test above only proves
+    termination at max_seeds=2, max_candidates=200, which is nowhere near
+    that path. 20/3_000 is two orders of magnitude below the real defaults on
+    both axes -- still nowhere near the actual budget -- but it is the
+    largest size that reliably finishes in a bit over a second on this
+    machine (measured ~1.2s locally), which keeps the suite fast while still
+    exercising the "many attempts, each doing real search_last_reel work"
+    shape that a hang would actually come from, rather than the near-instant
+    2/200 case. The wall-clock bound below is generous (10s) to avoid
+    flakiness on slower CI machines while still catching a real hang."""
+    spec = hw(targets={"rtp": 1000, "min_win_rate": 0.55})
+    start = time.monotonic()
+    result = solve(spec, SolverOptions(seed=1, max_seeds=20, max_candidates=3000))
+    elapsed = time.monotonic() - start
+    assert result is None
+    assert elapsed < 10.0, f"solve took {elapsed:.2f}s, expected a quick None"

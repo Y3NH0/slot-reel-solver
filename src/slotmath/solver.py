@@ -18,7 +18,7 @@ import random
 from functools import reduce
 from itertools import product
 from math import gcd, prod
-from typing import Iterable, Iterator, Sequence
+from typing import Iterable, Iterator
 
 from pydantic import BaseModel
 
@@ -155,8 +155,15 @@ def solve(spec: GameSpec, options: SolverOptions) -> ReelConfig | None:
                 spec, reels, budget=options.signature_budget
             )
             metrics = build_metrics(spec, distribution)
-            if not congruence_ok(spec, metrics.spin_count, distribution.keys()):
-                continue
+            # No congruence_ok pre-filter here: by this point engine.evaluate
+            # and build_metrics have already paid for the full distribution,
+            # so the payout support is known and the very next exact_rtp
+            # check already subsumes what congruence_ok would tell us -- a
+            # congruence failure implies exact_rtp() != target anyway.
+            # congruence_ok's value is O(1) pruning *before* that work, which
+            # requires knowing the support in advance; it is not available
+            # here, so it stays a standalone diagnostic (see its own tests)
+            # rather than a check in this loop.
             if exact_rtp(metrics) != spec.targets.rtp:
                 continue
             if exact_win_rate(metrics) < spec.targets.min_win_rate:
