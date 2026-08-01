@@ -151,7 +151,11 @@ def _cmd_explore(args, out, err) -> int:
         if store.exists()
         else Portfolio(entries=[], calibration=None)
     )
-    threshold = args.distance or (portfolio.calibration or {}).get("distance", 0.25)
+    threshold = (
+        args.distance
+        if args.distance is not None
+        else (portfolio.calibration or {}).get("distance", 0.25)
+    )
 
     admitted = 0
     for round_index in range(args.rounds):

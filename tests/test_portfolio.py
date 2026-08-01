@@ -3,7 +3,7 @@ import math
 import pytest
 
 from slotmath import naive
-from slotmath.metrics import build_metrics
+from slotmath.metrics import Metrics, PayoutBucket, build_metrics
 from slotmath.portfolio import (
     Portfolio,
     calibrate,
@@ -29,6 +29,46 @@ def _stub_config(g):
         reels=g.reels,
         metrics=metrics_for(g),
     )
+
+
+def _metrics(win_rate, volatility, max_win, distribution, spin_count):
+    """Build a Metrics object with independently controllable feature
+    dimensions, so should_admit tests can isolate exactly one dimension
+    at a time instead of relying on whichever values a real GameSpec
+    happens to produce."""
+    return Metrics(
+        spin_count=spin_count,
+        win_count=round(win_rate * spin_count),
+        win_rate=win_rate,
+        total_payout_units=0,
+        payout_unit_denominator=20,
+        rtp=0.95,
+        volatility=volatility,
+        max_win=max_win,
+        payout_distribution=[
+            PayoutBucket(payout_units=units, payout=units / 20, combo_count=count)
+            for units, count in distribution.items()
+        ],
+    )
+
+
+def _config(m):
+    return ReelConfig(spec="configs/homework-3x3.json", reels=[[0]], metrics=m)
+
+
+# Generous fixed ranges covering both the synthetic metrics below and the
+# GOLDEN fixtures' real metrics, in FEATURE_NAMES order: win_rate,
+# volatility, log_max_win, payout_entropy, spin_count.
+CALIBRATION = {
+    "distance": 0.25,
+    "ranges": [
+        (0.0, 1.0),
+        (0.0, 5.0),
+        (0.0, math.log(1001)),
+        (0.0, 3.0),
+        (0.0, 2000.0),
+    ],
+}
 
 
 def test_features_has_five_dimensions_in_documented_order():
@@ -78,8 +118,25 @@ def test_min_distance_against_empty_set_is_infinite():
     assert min_distance((0.5,) * 5, []) == float("inf")
 
 
-def test_should_admit_rejects_a_near_duplicate():
-    p = Portfolio(entries=[], calibration=None)
+def test_should_admit_rejects_a_near_duplicate_against_a_one_entry_portfolio():
+    """This is the case the sample-relative normalisation bug hid: with
+    exactly one existing entry, deriving low/high from the live portfolio
+    instead of a fixed calibrated scale stretches any dimension that
+    differs at all to exactly 0 and 1, so a near-duplicate looks maximally
+    distant and gets wrongly admitted. Against the pre-fix should_admit
+    (which ignores calibration and always normalises against whatever is
+    currently being compared), this assertion fails: the two points differ
+    only in win_rate, so that one dimension gets stretched to {0, 1} and
+    the distance comes out as 1.0 -- comfortably over the 0.25 threshold,
+    wrongly admitting the near-duplicate."""
+    existing = _metrics(0.90, 1.0, 50, {0: 50, 20: 50}, 500)
+    near_duplicate = _metrics(0.905, 1.0, 50, {0: 50, 20: 50}, 500)
+    p = Portfolio(entries=[_config(existing)], calibration=CALIBRATION)
+    assert not should_admit(p, near_duplicate, 0.25)
+
+
+def test_should_admit_rejects_a_bit_identical_duplicate():
+    p = Portfolio(entries=[], calibration=CALIBRATION)
     a, b, c = GOLDEN
     # admitting the very same config twice must fail the second time
     assert should_admit(p, metrics_for(c), 0.25)
@@ -88,15 +145,52 @@ def test_should_admit_rejects_a_near_duplicate():
 
 
 def test_should_admit_accepts_a_clearly_different_config():
-    p = Portfolio(entries=[_stub_config(GOLDEN[2])], calibration=None)
-    # fixture A has win_rate 1 and a completely different payout structure
-    assert should_admit(p, metrics_for(GOLDEN[0]), 0.25)
+    existing = _metrics(0.90, 1.0, 50, {0: 50, 20: 50}, 500)
+    distinct = _metrics(0.10, 0.2, 3, {0: 900, 20: 100}, 500)
+    p = Portfolio(entries=[_config(existing)], calibration=CALIBRATION)
+    assert should_admit(p, distinct, 0.25)
+
+
+def test_should_admit_without_calibration_admits_everything():
+    """Before calibration exists there is no meaningful scale to normalise
+    against, so should_admit honestly admits every candidate instead of
+    running a filter that only pretends to work -- including a
+    bit-identical duplicate, which is correct here, not a regression."""
+    p = Portfolio(entries=[], calibration=None)
+    a, b, c = GOLDEN
+    assert should_admit(p, metrics_for(c), 0.25)
+    p.entries.append(_stub_config(c))
+    assert should_admit(p, metrics_for(c), 0.25)
+
+
+def test_admission_is_order_independent_given_fixed_calibration():
+    reference = _metrics(0.90, 1.0, 50, {0: 50, 20: 50}, 500)
+    near_duplicate = _metrics(0.905, 1.0, 50, {0: 50, 20: 50}, 500)
+    distinct = _metrics(0.10, 0.2, 3, {0: 900, 20: 100}, 500)
+
+    def admitted_win_rates(order):
+        p = Portfolio(entries=[_config(reference)], calibration=CALIBRATION)
+        admitted = []
+        for m in order:
+            if should_admit(p, m, 0.25):
+                p.entries.append(_config(m))
+                admitted.append(m.win_rate)
+        return admitted
+
+    assert (
+        admitted_win_rates([near_duplicate, distinct])
+        == admitted_win_rates([distinct, near_duplicate])
+    )
 
 
 def test_calibrate_returns_a_threshold_inside_the_observed_range():
     distances = [0.1, 0.4, 0.6, 0.9]
     d = calibrate(distances)
     assert 0.0 < d < 0.9
+
+
+def test_calibrate_of_empty_distances_returns_the_default_threshold():
+    assert calibrate([]) == 0.25
 
 
 def test_portfolio_round_trips_through_json(tmp_path):
