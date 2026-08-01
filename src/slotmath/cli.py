@@ -134,8 +134,23 @@ def _cmd_solve(args, out, err) -> int:
     return 0
 
 
+def _print_calibration(portfolio, entry_count: int, out, label: str = "calibration derived") -> None:
+    from slotmath.portfolio import FEATURE_NAMES
+
+    cal = portfolio.calibration
+    ranges_str = ", ".join(
+        f"{name}=[{lo:.4g}, {hi:.4g}]"
+        for name, (lo, hi) in zip(FEATURE_NAMES, cal["ranges"])
+    )
+    print(
+        f"{label} from {entry_count} entries: distance={cal['distance']:.4g}; "
+        f"ranges: {ranges_str}",
+        file=out,
+    )
+
+
 def _cmd_explore(args, out, err) -> int:
-    from slotmath.portfolio import Portfolio, features, min_distance, normalise, should_admit
+    from slotmath.portfolio import Portfolio, maybe_calibrate, recalibrate, should_admit
     from slotmath.solver import SolverOptions, solve
 
     data = _load_json(Path(args.path), err)
@@ -151,11 +166,12 @@ def _cmd_explore(args, out, err) -> int:
         if store.exists()
         else Portfolio(entries=[], calibration=None)
     )
-    threshold = (
-        args.distance
-        if args.distance is not None
-        else (portfolio.calibration or {}).get("distance", 0.25)
-    )
+
+    if args.recalibrate:
+        if recalibrate(portfolio):
+            _print_calibration(portfolio, len(portfolio.entries), out, label="recalibrated")
+        else:
+            print("recalibrate requested but the portfolio is empty; nothing to calibrate from", file=out)
 
     admitted = 0
     for round_index in range(args.rounds):
@@ -163,12 +179,34 @@ def _cmd_explore(args, out, err) -> int:
         if config is None:
             print(f"round {round_index}: no config found", file=out)
             continue
-        if should_admit(portfolio, config.metrics, threshold):
-            portfolio.entries.append(config)
-            admitted += 1
-            print(f"round {round_index}: admitted (portfolio now {len(portfolio.entries)})", file=out)
+
+        if portfolio.calibration is None:
+            admit = True  # still collecting the unfiltered calibration sample
         else:
+            threshold = (
+                args.distance
+                if args.distance is not None
+                else portfolio.calibration.get("distance", 0.25)
+            )
+            admit = should_admit(portfolio, config.metrics, threshold)
+
+        if not admit:
             print(f"round {round_index}: rejected as too similar", file=out)
+            continue
+
+        portfolio.entries.append(config)
+        admitted += 1
+
+        if portfolio.calibration is None:
+            print(
+                f"round {round_index}: admitted (calibrating, "
+                f"{len(portfolio.entries)}/{args.calibration_size})",
+                file=out,
+            )
+            if maybe_calibrate(portfolio, args.calibration_size):
+                _print_calibration(portfolio, len(portfolio.entries), out)
+        else:
+            print(f"round {round_index}: admitted (portfolio now {len(portfolio.entries)})", file=out)
 
     store.parent.mkdir(parents=True, exist_ok=True)
     store.write_text(portfolio.model_dump_json(indent=2), encoding="utf-8")
@@ -213,6 +251,22 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--seed", type=int, default=20260731)
     p.add_argument("--rounds", type=int, default=1)
     p.add_argument("--distance", type=float, default=None)
+    p.add_argument(
+        "--calibration-size",
+        type=int,
+        default=6,
+        help=(
+            "entries to collect with no diversity filter before deriving "
+            "ranges and a distance threshold from their observed spread "
+            "(default 6 -- a solve takes roughly a minute, so this keeps a "
+            "fresh run's calibration phase in the single-digit minutes)"
+        ),
+    )
+    p.add_argument(
+        "--recalibrate",
+        action="store_true",
+        help="discard any existing calibration and derive a fresh one from the current entries",
+    )
     p.set_defaults(func=_cmd_explore)
 
     try:

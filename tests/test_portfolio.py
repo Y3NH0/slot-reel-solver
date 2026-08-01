@@ -5,12 +5,16 @@ import pytest
 from slotmath import naive
 from slotmath.metrics import Metrics, PayoutBucket, build_metrics
 from slotmath.portfolio import (
+    FEATURE_NAMES,
     Portfolio,
+    build_calibration,
     calibrate,
     entropy_of,
     features,
+    maybe_calibrate,
     min_distance,
     normalise,
+    recalibrate,
     should_admit,
 )
 from slotmath.verify import ReelConfig
@@ -191,6 +195,84 @@ def test_calibrate_returns_a_threshold_inside_the_observed_range():
 
 def test_calibrate_of_empty_distances_returns_the_default_threshold():
     assert calibrate([]) == 0.25
+
+
+def test_maybe_calibrate_admits_unconditionally_below_the_calibration_size():
+    """Below the requested size, maybe_calibrate must not compute anything
+    yet -- the portfolio is still in its unfiltered calibration-collection
+    phase, and calibration stays None so should_admit keeps admitting
+    everything (see test_should_admit_without_calibration_admits_everything)."""
+    reference = _metrics(0.90, 1.0, 50, {0: 50, 20: 50}, 500)
+    distinct_a = _metrics(0.10, 0.2, 3, {0: 900, 20: 100}, 500)
+    p = Portfolio(entries=[_config(reference), _config(distinct_a)], calibration=None)
+    assert maybe_calibrate(p, 3) is False
+    assert p.calibration is None
+
+
+def test_maybe_calibrate_populates_ranges_and_distance_at_the_threshold():
+    reference = _metrics(0.90, 1.0, 50, {0: 50, 20: 50}, 500)
+    distinct_a = _metrics(0.10, 0.2, 3, {0: 900, 20: 100}, 500)
+    distinct_b = _metrics(0.50, 0.6, 10, {0: 250, 5: 250, 20: 250, 60: 250}, 1000)
+    p = Portfolio(
+        entries=[_config(reference), _config(distinct_a), _config(distinct_b)],
+        calibration=None,
+    )
+    assert maybe_calibrate(p, 3) is True
+    assert p.calibration is not None
+    assert "distance" in p.calibration
+    assert "ranges" in p.calibration
+    assert len(p.calibration["ranges"]) == len(FEATURE_NAMES)
+    # calling again is a no-op: calibration already exists
+    frozen = p.calibration
+    assert maybe_calibrate(p, 3) is False
+    assert p.calibration == frozen
+
+
+def test_calibration_derived_from_entries_then_genuinely_filters():
+    """The whole point of this round: once maybe_calibrate has fired, the
+    filter is actually engaged rather than perpetually taking the
+    admit-everything branch. A near-duplicate of one of the calibrating
+    entries is rejected; a config clearly outside the observed spread on
+    every dimension is admitted."""
+    reference = _metrics(0.90, 1.0, 50, {0: 50, 20: 50}, 500)
+    distinct_a = _metrics(0.10, 0.2, 3, {0: 900, 20: 100}, 500)
+    distinct_b = _metrics(0.50, 0.6, 10, {0: 250, 5: 250, 20: 250, 60: 250}, 1000)
+    near_duplicate = _metrics(0.905, 1.0, 50, {0: 50, 20: 50}, 500)
+    genuinely_different = _metrics(
+        0.99, 4.5, 500, {0: 1, 5: 1, 20: 1, 60: 1, 300: 1}, 100
+    )
+
+    p = Portfolio(
+        entries=[_config(reference), _config(distinct_a), _config(distinct_b)],
+        calibration=None,
+    )
+    assert maybe_calibrate(p, 3) is True
+    threshold = p.calibration["distance"]
+
+    assert not should_admit(p, near_duplicate, threshold)
+    assert should_admit(p, genuinely_different, threshold)
+
+
+def test_recalibrate_replaces_an_existing_calibration():
+    reference = _metrics(0.90, 1.0, 50, {0: 50, 20: 50}, 500)
+    distinct_a = _metrics(0.10, 0.2, 3, {0: 900, 20: 100}, 500)
+    distinct_b = _metrics(0.50, 0.6, 10, {0: 250, 5: 250, 20: 250, 60: 250}, 1000)
+    stale = {"distance": 0.5, "ranges": [(0.0, 1.0)] * len(FEATURE_NAMES)}
+    p = Portfolio(
+        entries=[_config(reference), _config(distinct_a), _config(distinct_b)],
+        calibration=stale,
+    )
+    assert recalibrate(p) is True
+    assert p.calibration is not None
+    assert p.calibration != stale
+    assert p.calibration == build_calibration(p.entries)
+
+
+def test_recalibrate_on_an_empty_portfolio_clears_rather_than_keeps_stale_calibration():
+    stale = {"distance": 0.5, "ranges": [(0.0, 1.0)] * len(FEATURE_NAMES)}
+    p = Portfolio(entries=[], calibration=stale)
+    assert recalibrate(p) is False
+    assert p.calibration is None
 
 
 def test_portfolio_round_trips_through_json(tmp_path):

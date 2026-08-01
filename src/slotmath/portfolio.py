@@ -44,6 +44,21 @@ Because the stored ranges are fixed and do not depend on what else happens
 to be in the portfolio at the time of the call, admission decisions are
 order-independent: offering the same candidates in a different order does
 not change which ones end up admitted.
+
+The calibration pass itself
+----------------------------
+Storing ranges only helps if something actually derives and stores them.
+`maybe_calibrate` is that something: while a portfolio has no calibration
+yet, every candidate is admitted unconditionally (see `should_admit`) --
+this *is* the calibration pass, collecting an unfiltered sample. Once the
+portfolio reaches a caller-chosen size, `maybe_calibrate` calls
+`build_calibration` to freeze `feature_ranges` over the collected vectors
+plus a distance threshold from `calibrate` over their pairwise normalised
+distances, and stores both on `portfolio.calibration`. From that point on
+`should_admit` is genuinely engaged. `recalibrate` discards whatever
+calibration exists and derives a fresh one immediately from however many
+entries are currently in the portfolio, for when the first batch turned out
+to be unrepresentative.
 """
 
 from __future__ import annotations
@@ -180,3 +195,62 @@ def calibrate(distances: list[float]) -> float:
     ordered = sorted(distances)
     median = ordered[len(ordered) // 2]
     return max(0.05, median / 2)
+
+
+def build_calibration(entries: list[ReelConfig]) -> dict:
+    """Derive a calibration dict from a batch of entries collected with no
+    diversity filter (i.e. exactly what the pre-calibration phase of
+    `maybe_calibrate` produces).
+
+    `ranges` is `feature_ranges` over the entries' feature vectors, in
+    `FEATURE_NAMES` order. `distance` is `calibrate` applied to every
+    pairwise normalised distance between those same vectors (normalised
+    against the ranges just derived) -- the spread the feature space
+    actually has, not a guess.
+    """
+    vectors = [features(e.metrics) for e in entries]
+    ranges = feature_ranges(vectors)
+    normalised = normalise(vectors, ranges=ranges)
+    pairwise = [
+        math.sqrt(sum((a - b) ** 2 for a, b in zip(v1, v2)))
+        for i, v1 in enumerate(normalised)
+        for v2 in normalised[i + 1 :]
+    ]
+    return {"distance": calibrate(pairwise), "ranges": ranges}
+
+
+def maybe_calibrate(portfolio: Portfolio, calibration_size: int) -> bool:
+    """If `portfolio` has no calibration yet and has collected at least
+    `calibration_size` entries, derive one and store it on
+    `portfolio.calibration` in place.
+
+    Returns True exactly when a calibration was just computed, so a caller
+    (the `explore` CLI) knows to report the newly derived threshold and
+    ranges. A no-op -- and returns False -- once a calibration already
+    exists, or while the portfolio is still below the requested size.
+    """
+    if portfolio.calibration is not None:
+        return False
+    if not portfolio.entries or len(portfolio.entries) < calibration_size:
+        return False
+    portfolio.calibration = build_calibration(portfolio.entries)
+    return True
+
+
+def recalibrate(portfolio: Portfolio) -> bool:
+    """Discard whatever calibration `portfolio` has and derive a fresh one
+    immediately from every entry currently in the portfolio, regardless of
+    how many there are.
+
+    For when the first batch of entries turned out to be an unrepresentative
+    sample of the feature space and the stored ranges/threshold need
+    correcting without waiting for `calibration_size` new entries to arrive.
+    Returns True if a fresh calibration was computed; False if the portfolio
+    is empty, in which case there is nothing to derive from and the
+    calibration is simply cleared.
+    """
+    if not portfolio.entries:
+        portfolio.calibration = None
+        return False
+    portfolio.calibration = build_calibration(portfolio.entries)
+    return True
