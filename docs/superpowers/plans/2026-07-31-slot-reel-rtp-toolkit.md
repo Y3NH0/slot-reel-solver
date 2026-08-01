@@ -949,8 +949,13 @@ def test_histogram_counts_sum_to_reel_length():
 
 
 def test_budget_exceeded_reports_offending_columns():
+    """The strip must be built from runs. A strip with no adjacent repeats --
+    list(range(5)) * 8, say -- collapses to exactly ONE signature per column
+    (the all-None one), because no pattern can ever match, so it would never
+    reach any budget."""
     spec = hw()
-    reels = [list(range(5)) * 8, list(range(5)) * 8, list(range(5)) * 8]
+    runs = [s for s in range(5) for _ in range(4)] * 2   # 15 signatures/column
+    reels = [runs, runs, runs]
     with pytest.raises(engine.SignatureBudgetExceeded) as exc:
         engine.evaluate(spec, reels, budget=10)
     assert len(exc.value.sizes) == 3
