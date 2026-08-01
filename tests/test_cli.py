@@ -1,4 +1,7 @@
 import json
+import os
+import stat
+
 import pytest
 
 from slotmath import naive
@@ -41,6 +44,34 @@ def test_spec_subcommand_returns_2_on_malformed_json(tmp_path, capsys):
     assert main(["spec", str(bad)]) == 2
     err = capsys.readouterr().err
     assert "Traceback" not in err and "invalid JSON" in err
+
+
+def test_spec_subcommand_returns_2_on_directory_path(tmp_path, capsys):
+    assert main(["spec", str(tmp_path)]) == 2
+    err = capsys.readouterr().err
+    assert "Traceback" not in err
+    assert str(tmp_path) in err
+
+
+@pytest.mark.skipif(
+    os.name == "nt" or (hasattr(os, "geteuid") and os.geteuid() == 0),
+    reason="permission bits are not enforceable on Windows or as root",
+)
+def test_spec_subcommand_returns_2_on_unreadable_file(tmp_path, capsys):
+    bad = tmp_path / "unreadable.json"
+    bad.write_text('{"a": 1}', encoding="utf-8")
+    bad.chmod(0)
+    try:
+        assert main(["spec", str(bad)]) == 2
+        err = capsys.readouterr().err
+        assert "Traceback" not in err
+        assert str(bad) in err
+    finally:
+        bad.chmod(stat.S_IRUSR | stat.S_IWUSR)
+
+
+def test_main_returns_2_for_unknown_subcommand(capsys):
+    assert main(["bogus-subcommand"]) == 2
 
 
 def test_verify_returns_0_for_a_golden_config(tmp_path, capsys):
