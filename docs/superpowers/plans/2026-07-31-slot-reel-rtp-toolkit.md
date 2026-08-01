@@ -430,14 +430,19 @@ def test_signature_is_symbol_when_all_rows_match_else_none():
     assert window_signature((0, 1, 2), plan) == (None, None, None)
 
 
-def test_distinct_signature_count_for_homework_column_is_46():
-    """5 all-same + 20 top-pair-only + 20 bottom-pair-only + 1 none = 46."""
+def test_distinct_signature_count_for_homework_column_is_16():
+    """5 all-same + 5 top-pair-only + 5 bottom-pair-only + 1 none = 16.
+
+    The 20 windows with a top pair only all share the signature (a, None, None),
+    so they collapse to 5 distinct values, not 20. That collapse is the whole
+    point of signatures: 125 windows become 16 equivalence classes.
+    """
     plan = column_plans(_spec_3x3())[0]
     seen = {
         window_signature((a, b, c), plan)
         for a in range(5) for b in range(5) for c in range(5)
     }
-    assert len(seen) == 46
+    assert len(seen) == 16
 ```
 
 - [ ] **Step 2：跑測試確認失敗**
@@ -508,7 +513,7 @@ def window_signature(
 - [ ] **Step 4：跑測試確認通過**
 
 Run: `pytest tests/test_windows.py -v`
-Expected: 全部 PASS，含 `test_distinct_signature_count_for_homework_column_is_46`
+Expected: 全部 PASS，含 `test_distinct_signature_count_for_homework_column_is_16`
 
 - [ ] **Step 5：Commit**
 
