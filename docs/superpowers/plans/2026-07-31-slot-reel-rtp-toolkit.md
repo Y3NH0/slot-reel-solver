@@ -2146,8 +2146,10 @@ def test_weights_have_both_signs_so_a_solution_exists():
 def test_all_same_signature_outweighs_a_dead_signature():
     spec = hw()
     weights = signature_weights(spec, GOLDEN[2].reels[:-1])
-    all_twos = weights[(2, 2, 2, 2, 2)] if (2, 2, 2, 2, 2) in weights else None
-    dead = weights.get((None, None, None, None, None))
+    # The LAST column is touched by TR, BR and FULL only -- TL and BL do not
+    # reach it -- so signatures there are 3-tuples, not 5-tuples.
+    all_twos = weights.get((2, 2, 2))
+    dead = weights.get((None, None, None))
     assert dead is not None and dead < 0
     if all_twos is not None:
         assert all_twos > dead
