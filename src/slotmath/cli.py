@@ -134,6 +134,44 @@ def _cmd_solve(args, out, err) -> int:
     return 0
 
 
+def _cmd_explore(args, out, err) -> int:
+    from slotmath.portfolio import Portfolio, features, min_distance, normalise, should_admit
+    from slotmath.solver import SolverOptions, solve
+
+    data = _load_json(Path(args.path), err)
+    try:
+        spec = GameSpec.model_validate(data)
+    except ValidationError as exc:
+        print(f"{args.path}: invalid GameSpec\n{exc}", file=err)
+        return 2
+
+    store = Path(args.portfolio)
+    portfolio = (
+        Portfolio.model_validate_json(store.read_text(encoding="utf-8"))
+        if store.exists()
+        else Portfolio(entries=[], calibration=None)
+    )
+    threshold = args.distance or (portfolio.calibration or {}).get("distance", 0.25)
+
+    admitted = 0
+    for round_index in range(args.rounds):
+        config = solve(spec, SolverOptions(seed=args.seed + round_index))
+        if config is None:
+            print(f"round {round_index}: no config found", file=out)
+            continue
+        if should_admit(portfolio, config.metrics, threshold):
+            portfolio.entries.append(config)
+            admitted += 1
+            print(f"round {round_index}: admitted (portfolio now {len(portfolio.entries)})", file=out)
+        else:
+            print(f"round {round_index}: rejected as too similar", file=out)
+
+    store.parent.mkdir(parents=True, exist_ok=True)
+    store.write_text(portfolio.model_dump_json(indent=2), encoding="utf-8")
+    print(f"admitted {admitted} of {args.rounds}; wrote {store}", file=out)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     import sys
 
@@ -164,6 +202,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--max-candidates", type=int, default=40_000)
     p.add_argument("--out", default=None)
     p.set_defaults(func=_cmd_solve)
+
+    p = sub.add_parser("explore", help="collect diverse valid configs")
+    p.add_argument("path")
+    p.add_argument("--portfolio", default="solutions/portfolio.json")
+    p.add_argument("--seed", type=int, default=20260731)
+    p.add_argument("--rounds", type=int, default=1)
+    p.add_argument("--distance", type=float, default=None)
+    p.set_defaults(func=_cmd_explore)
 
     try:
         args = parser.parse_args(argv)
