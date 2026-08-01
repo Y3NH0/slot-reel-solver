@@ -23,6 +23,10 @@ from slotmath.verify import ReelConfig, verify
 
 
 def _load_json(path: Path, stderr) -> dict:
+    # scripts/hooks/verify_on_write.py carries its own copy of this
+    # read-and-parse guard. The duplication is deliberate: the hook's fast
+    # path must not import the evaluation stack, so it cannot import this
+    # function. Keep both in sync by hand.
     if not path.exists():
         print(f"{path}: not found", file=stderr)
         raise SystemExit(2)
