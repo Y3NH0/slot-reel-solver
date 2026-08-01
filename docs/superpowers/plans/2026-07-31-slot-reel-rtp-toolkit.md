@@ -1538,12 +1538,21 @@ def test_combo_counts_not_summing_to_spin_count_fails():
 
 def test_stale_metrics_fail_with_recompute_message_not_engine_bug_message():
     """Engines agree with each other but not with the file: that is a stale
-    artifact, not a program bug. The two must be reported differently."""
+    artifact, not a program bug. The two must be reported differently.
+
+    The shift is between the two *non-zero* buckets (20 and 100 units) so the
+    zero bucket -- and therefore win_count, which is derived from it -- stays
+    untouched. That keeps the mutated metrics internally self-consistent, so
+    Layer 1 must NOT fire and only the comparison against a fresh recompute
+    fails. Shifting a combo out of the zero bucket instead would desync
+    win_count and trip file_consistency before Layer 2 is ever reached,
+    conflating a stale artifact with a corrupted one.
+    """
     g = GOLDEN[2]
     cfg = config_for(g)
-    cfg.metrics.total_payout_units += 20
+    cfg.metrics.total_payout_units -= 80
     cfg.metrics.payout_distribution[1].combo_count += 1
-    cfg.metrics.payout_distribution[0].combo_count -= 1
+    cfg.metrics.payout_distribution[2].combo_count -= 1
     report = verify(hw(), cfg, **MC)
     failed = {gate.name for gate in report.gates if not gate.passed}
     assert "file_matches_recompute" in failed
