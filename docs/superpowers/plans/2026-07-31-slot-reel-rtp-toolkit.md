@@ -3226,8 +3226,18 @@ def main(stdin_text: str) -> tuple[int, str]:
     if not target.exists():
         return 0, ""
 
+    # The CLI's _load_json carries the equivalent guard. If you change one,
+    # check the other -- the hook deliberately does not import from
+    # slotmath.cli, because that would drag the whole evaluation stack into
+    # the fast path.
     try:
-        data = json.loads(target.read_text(encoding="utf-8"))
+        text = target.read_text(encoding="utf-8")
+    except OSError as exc:
+        return 2, f"{path}: cannot read ({exc.strerror})\n"
+    except UnicodeDecodeError:
+        return 2, f"{path}: not valid UTF-8 text\n"
+    try:
+        data = json.loads(text)
     except json.JSONDecodeError as exc:
         return 2, f"{path}: invalid JSON at line {exc.lineno}: {exc.msg}\n"
 
