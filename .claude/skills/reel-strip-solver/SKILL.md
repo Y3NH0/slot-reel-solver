@@ -73,6 +73,35 @@ ever loses, whether one payout dominates, and whether `max_win` is sane.
   plus two boundary signatures, so converting a solution back into a real
   cyclic strip still requires a finite search. This is not a closed form.
   Do not describe it as one.
+- **Every accepted candidate uses every declared symbol at least once.**
+  Nothing about RTP or win-rate requires this on its own -- a symbol can be
+  sampled zero times by pure chance -- so the acceptance loop filters it
+  explicitly, rejecting any candidate whose reels don't cover the full
+  symbol set. `slotmath verify`'s `all_symbols_used` gate catches it too, in
+  case a config was produced or edited some other way.
+- **Do not chase "every symbol wins via multiple patterns" as a hard
+  requirement without re-reading this note first.** It was investigated in
+  depth for the homework paytable and found to be in genuine structural
+  tension with the RTP/win-rate targets, not merely hard to search for.
+  Guaranteeing a symbol a run long enough to complete more than one pattern
+  (run >= 2 for two row-pairs, run >= 3 to add FULL) necessarily makes that
+  symbol's payout reachable far more often; doing this for every symbol --
+  including the high-multiplier ones -- pushes the average payout per win
+  up, which for a *fixed* RTP forces win_rate down (RTP ~= win_rate x
+  average payout per win). Concretely: a construction giving every symbol a
+  run of 3 in every reel was confirmed to hit RTP=19/20 exactly with every
+  symbol winning all 5 patterns, but its win_rate was ~0.30 -- well under
+  the homework's 0.55 minimum. Every later attempt (weaker run>=2, coverage
+  confined to only the two fixed reels so the last reel stays free,
+  biasing cheap symbols to a larger footprint and expensive ones to the
+  bare minimum) either reproduced the same low win_rate or broke the
+  Diophantine construction's existence routes outright (see the module
+  docstring: a coverage-guaranteed last reel uses every one of a column's
+  16 possible signatures, turning the normal 1-2-term existence proof into
+  a much harder ~16-term integer equation). None of this rules out a
+  solution existing -- it rules out finding one by sampling. A real attempt
+  would need an actual integer program over the signature counts, not
+  another random or biased composition function.
 
 ## Output Contract
 
