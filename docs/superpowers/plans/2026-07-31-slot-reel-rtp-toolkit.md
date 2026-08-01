@@ -1216,19 +1216,28 @@ def test_fixture_a_is_the_only_one_exercising_nonzero_n1():
     assert nonzero == ["A"]
 
 
-@pytest.mark.parametrize("seed", range(40))
-def test_mod5_invariant_is_necessary_for_random_reels(seed):
-    """For any config: if RTP == 19/20 then n1 = 4N (mod 5)."""
-    rng = random.Random(1000 + seed)
+def test_mod5_invariant_rules_out_configs_that_violate_it():
+    """Contrapositive of the invariant: if n1 is in the wrong residue class,
+    RTP cannot be 19/20.
+
+    Written this way because the forward direction is unreachable here --
+    random reels essentially never land on an exact 19/20, so a test guarded
+    by `if rtp == 19/20` would be dead code that always passes. The forward
+    direction is covered by test_mod5_invariant_holds_for_golden, which runs
+    on fixtures whose RTP really is 19/20.
+    """
     spec = hw()
-    reels = [
-        [rng.randint(0, 4) for _ in range(rng.randint(3, 8))]
-        for _ in range(3)
-    ]
-    dist = naive.evaluate(spec, reels)
-    m = build_metrics(spec, dist)
-    if exact_rtp(m) == Fraction(19, 20):
-        assert dist.get(11, 0) % 5 == (4 * m.spin_count) % 5
+    exercised = 0
+    for seed in range(40):
+        rng = random.Random(1000 + seed)
+        reels = [[rng.randint(0, 4) for _ in range(rng.randint(3, 8))] for _ in range(3)]
+        dist = naive.evaluate(spec, reels)
+        m = build_metrics(spec, dist)
+        if dist.get(11, 0) % 5 != (4 * m.spin_count) % 5:
+            exercised += 1
+            assert exact_rtp(m) != Fraction(19, 20)
+    # Guard against this test silently going vacuous again.
+    assert exercised >= 10, f"only {exercised}/40 seeds exercised the assertion"
 ```
 
 - [ ] **Step 3：跑測試確認失敗**
