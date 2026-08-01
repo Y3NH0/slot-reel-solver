@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from fractions import Fraction
+from functools import cached_property
 from math import lcm
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -92,8 +93,8 @@ class GameSpec(BaseModel):
                     )
         return self
 
-    def payout_unit_denominator(self) -> int:
-        """Smallest D such that every reachable payout is an integer number of 1/D."""
+    @cached_property
+    def _payout_unit_denominator(self) -> int:
         return lcm(
             *(
                 (sym * p.pattern_multiplier).denominator
@@ -102,7 +103,26 @@ class GameSpec(BaseModel):
             )
         )
 
+    def payout_unit_denominator(self) -> int:
+        """Smallest D such that every reachable payout is an integer number of 1/D.
+
+        Computed once and memoized via functools.cached_property: GameSpec is
+        immutable after validation (patterns/symbols never change post-init),
+        so recomputing the lcm on every call would be pure waste. Safe to call
+        from hot loops (e.g. once per pattern per stop combination).
+        """
+        return self._payout_unit_denominator
+
     def payout_units(self, symbol: int, pattern: Pattern) -> int:
+        """Return the exact integer payout of `symbol` under `pattern`, in
+        units of 1 / payout_unit_denominator().
+
+        Contract: `pattern` must be drawn from `self.patterns` (or otherwise
+        have a `pattern_multiplier` whose denominator was already folded into
+        `payout_unit_denominator()`'s lcm). An ad-hoc `Pattern` not part of
+        that computation can produce a non-integer result and trip the
+        assertion below.
+        """
         payout = self.symbols[symbol] * pattern.pattern_multiplier
         units = payout * self.payout_unit_denominator()
         assert units.denominator == 1, "payout_unit_denominator is wrong"

@@ -1,6 +1,7 @@
 from fractions import Fraction
 import pytest
 from pydantic import ValidationError
+import slotmath.spec
 from slotmath.spec import GameSpec, load_spec
 
 
@@ -71,6 +72,25 @@ def test_payout_units_is_integer():
     p = spec.patterns[0]
     assert spec.payout_units(1, p) == 11    # 0.55 * 20
     assert spec.payout_units(0, p) == 5     # 0.25 * 20
+
+
+def test_payout_unit_denominator_is_cached(monkeypatch):
+    spec = GameSpec.model_validate(_base())
+
+    calls = {"n": 0}
+    real_lcm = slotmath.spec.lcm
+
+    def counting_lcm(*args):
+        calls["n"] += 1
+        return real_lcm(*args)
+
+    monkeypatch.setattr(slotmath.spec, "lcm", counting_lcm)
+
+    first = spec.payout_unit_denominator()
+    second = spec.payout_unit_denominator()
+
+    assert first == second == 20
+    assert calls["n"] == 1, "payout_unit_denominator() recomputed lcm instead of using the cache"
 
 
 def test_homework_config_loads():
