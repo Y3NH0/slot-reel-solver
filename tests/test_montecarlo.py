@@ -39,12 +39,39 @@ def test_zero_variance_config_gives_zero_sigma():
     assert montecarlo.sigma_deviation(spec, reels, sim, exact) == 0.0
 
 
-def test_montecarlo_does_not_import_engine_or_windows():
-    """Layer 3 must not share abstractions with layers 1 and 2. See spec 9.3."""
-    source = (
-        __import__("pathlib").Path(montecarlo.__file__).read_text(encoding="utf-8")
-    )
-    assert "from slotmath.engine" not in source
-    assert "from slotmath.windows" not in source
-    assert "import slotmath.engine" not in source
-    assert "import slotmath.windows" not in source
+def test_montecarlo_shares_no_abstraction_with_the_exact_evaluators():
+    """Layer 3's whole purpose is to reach the same numbers along a route that
+    shares nothing with layers 1 and 2. Enforced by AST rather than by grepping
+    for substrings, because `from slotmath import engine` and a function-local
+    import both slip past a substring check.
+    """
+    import ast
+    from pathlib import Path
+
+    forbidden = {"engine", "windows", "naive"}
+    source = Path(montecarlo.__file__).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+
+    imported: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                imported.add(alias.name)
+        elif isinstance(node, ast.ImportFrom):
+            base = node.module or ""
+            imported.add(base)
+            for alias in node.names:
+                imported.add(f"{base}.{alias.name}" if base else alias.name)
+        elif isinstance(node, ast.Call):
+            func = node.func
+            name = getattr(func, "attr", None) or getattr(func, "id", None)
+            if name in {"import_module", "__import__"}:
+                raise AssertionError(
+                    "dynamic import in montecarlo.py defeats the independence guard"
+                )
+
+    leaked = {
+        target for target in imported
+        if any(part in forbidden for part in target.split("."))
+    }
+    assert not leaked, f"montecarlo.py must not import {sorted(leaked)}"
