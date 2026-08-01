@@ -22,21 +22,15 @@ from pydantic import BaseModel
 
 from slotmath import engine, montecarlo, naive
 from slotmath.engine import SignatureBudgetExceeded
-from slotmath.metrics import Metrics, build_metrics, exact_rtp, exact_win_rate
+from slotmath.metrics import (
+    BoardTooLargeError,
+    Metrics,
+    build_metrics,
+    check_board_budget,
+    exact_rtp,
+    exact_win_rate,
+)
 from slotmath.spec import GameSpec
-
-# naive.evaluate has no bound of its own: its cost is exactly
-# prod(len(reel) for reel in reels) (a full cyclic enumeration), which can be
-# enormous even when engine.evaluate's signature-product budget is satisfied
-# -- a long reel with many distinct symbols keeps the *signature* count small
-# while the *stop* count stays huge (three 500-symbol reels is
-# 500**3 = 125_000_000 board combinations, roughly 200 seconds of naive
-# enumeration, yet may sit well inside engine's default 5_000_000 signature
-# budget). This budget is checked directly against naive's own cost driver
-# -- prod(reel lengths) -- so the guard holds regardless of how the engine's
-# unrelated signature-space budget happens to land. Matches engine.evaluate's
-# default budget for consistency; it is not derived from it.
-NAIVE_BUDGET = 5_000_000
 
 # Layer 1 float checks compare *display* floats (rtp/win_rate/volatility/
 # max_win) against values derived from the integer counts. These floats
@@ -181,20 +175,14 @@ def verify(
 
     # ---- Layer 2: engine vs naive vs file ---------------------------------
     # naive.evaluate is unbounded (prod(reel lengths)), so its cost is
-    # checked directly, before it is ever called -- see NAIVE_BUDGET above.
-    board_size = 1
-    for reel in config.reels:
-        board_size *= len(reel)
-    if board_size > NAIVE_BUDGET:
-        add(
-            "engine_matches_naive",
-            False,
-            f"full enumeration would need {board_size} board combinations, "
-            f"over the safety budget of {NAIVE_BUDGET}; refusing to run "
-            "naive.evaluate. This is not a verdict on the artifact -- rerun "
-            "outside the hook with a deliberately raised budget if you need "
-            "to verify a config this large.",
-        )
+    # checked directly, before it is ever called -- see
+    # metrics.check_board_budget / metrics.NAIVE_BUDGET. Shared with
+    # cli.py's `report` command, which recomputes the same way (see finding
+    # 2 / the report-command regression note in the fix report).
+    try:
+        check_board_budget(config.reels)
+    except BoardTooLargeError as exc:
+        add("engine_matches_naive", False, str(exc))
         return VerifyReport(gates=gates, passed=False)
 
     # engine.evaluate is also called FIRST, ahead of naive: it raises

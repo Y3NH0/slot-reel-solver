@@ -18,7 +18,7 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from slotmath import naive
-from slotmath.metrics import build_metrics, exact_rtp, exact_win_rate
+from slotmath.metrics import build_metrics, check_board_budget, exact_rtp, exact_win_rate
 from slotmath.spec import GameSpec, load_spec
 from slotmath.verify import ReelConfig, verify
 
@@ -99,8 +99,14 @@ def _cmd_report(args, out, err) -> int:
     # is untrusted input (see finding 2 -- Layer 1 forgot to check the very
     # floats this command used to print verbatim), so build the table from
     # naive.evaluate's distribution and build_metrics(), which can only ever
-    # report what the reels actually produce.
+    # report what the reels actually produce. naive.evaluate is an
+    # unbounded full enumeration, so check_board_budget guards it here the
+    # same way verify.py's Layer 2 does -- otherwise a command that used to
+    # do zero computation would happily grind for minutes on an oversized
+    # artifact. BoardTooLargeError is a ValueError subclass, so it is caught
+    # by the same except clause as any other reel-shape problem.
     try:
+        check_board_budget(config.reels)
         distribution = naive.evaluate(spec, config.reels)
     except ValueError as exc:
         print(f"{args.path}: cannot evaluate reels: {exc}", file=err)

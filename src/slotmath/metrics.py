@@ -9,10 +9,54 @@ from __future__ import annotations
 
 from fractions import Fraction
 from math import sqrt
+from typing import Sequence
 
 from pydantic import BaseModel
 
 from slotmath.spec import GameSpec
+
+# Shared cap on prod(len(reel) for reel in reels) -- the cost driver for a
+# full cyclic enumeration (naive.evaluate, and anything that recomputes from
+# it, e.g. `slotmath report`). Living here rather than in verify.py or
+# cli.py lets every caller reach it without importing the evaluator modules
+# just for a size check. Not derived from engine.evaluate's signature-space
+# budget (a different, usually much smaller, cost axis) -- matched to it by
+# convention only.
+NAIVE_BUDGET = 5_000_000
+
+
+class BoardTooLargeError(ValueError):
+    """Raised by check_board_budget() when a full enumeration would be
+    unsafe to run. A ValueError subclass so callers that already catch
+    ValueError from reel-shape problems (e.g. undeclared symbols) catch this
+    too without an extra except clause, if they choose to."""
+
+    def __init__(self, board_size: int, budget: int):
+        self.board_size = board_size
+        self.budget = budget
+        super().__init__(
+            f"full enumeration would need {board_size} board combinations, "
+            f"over the safety budget of {budget}; refusing to run naive "
+            "enumeration. This is not a verdict on the artifact -- rerun "
+            "deliberately with a raised budget if you need to evaluate a "
+            "config this large."
+        )
+
+
+def check_board_budget(
+    reels: Sequence[Sequence[int]], budget: int = NAIVE_BUDGET
+) -> int:
+    """Returns prod(len(reel) for reel in reels); raises BoardTooLargeError
+    if that exceeds `budget`. Call this before any full enumeration
+    (naive.evaluate) on reels that came from untrusted input -- a hook
+    invocation or a CLI command run against an arbitrary file -- so an
+    oversized artifact fails fast instead of grinding for minutes."""
+    board_size = 1
+    for reel in reels:
+        board_size *= len(reel)
+    if board_size > budget:
+        raise BoardTooLargeError(board_size, budget)
+    return board_size
 
 
 class PayoutBucket(BaseModel):

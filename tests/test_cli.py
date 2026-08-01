@@ -99,3 +99,30 @@ def test_report_prints_payout_table(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "19/20" in out
     assert "474" in out and "42" in out
+
+
+def test_report_refuses_an_oversized_artifact_instead_of_grinding(tmp_path, capsys):
+    """`report` recomputes from the reels (finding 2's fix), which made it a
+    full enumeration -- naive.evaluate -- with no bound of its own. A
+    regression from that fix: report on an artifact whose board size is
+    prod(len(reel)) = 200**3 = 8_000_000 (over the shared NAIVE_BUDGET of
+    5_000_000) used to take ~15s; it must now refuse immediately instead.
+    The reels here are just three length-200 lists of a declared symbol --
+    building them is instant; it is *enumerating their cross product* that
+    the old code did unboundedly and the new guard refuses before it ever
+    starts, so this test stays fast."""
+    spec = hw()
+    reels = [[0] * 200 for _ in range(3)]
+    metrics = build_metrics(spec, naive.evaluate(spec, [[0, 0, 0]] * 3))
+    data = {
+        "spec": "configs/homework-3x3.json",
+        "reels": reels,
+        "metrics": json.loads(metrics.model_dump_json()),
+    }
+    path = tmp_path / "oversized.json"
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    assert main(["report", str(path)]) == 2
+    err = capsys.readouterr().err
+    assert "over the safety budget" in err
+    assert "Traceback" not in err
