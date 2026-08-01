@@ -18,8 +18,13 @@ from itertools import product
 from math import prod
 from typing import Sequence
 
-from slotmath.spec import GameSpec
-from slotmath.windows import ColumnPlan, column_plans, reel_windows, window_signature
+from slotmath.models.spec import GameSpec
+from slotmath.evaluation.windows import (
+    ColumnPlan,
+    column_plans,
+    reel_windows,
+    window_signature,
+)
 
 
 class SignatureBudgetExceeded(Exception):

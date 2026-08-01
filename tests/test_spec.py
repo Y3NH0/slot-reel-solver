@@ -1,8 +1,8 @@
 from fractions import Fraction
 import pytest
 from pydantic import ValidationError
-import slotmath.spec
-from slotmath.spec import GameSpec, load_spec
+import slotmath.models.spec
+from slotmath.models.spec import GameSpec, load_spec
 
 
 def _base():
@@ -78,13 +78,13 @@ def test_payout_unit_denominator_is_cached(monkeypatch):
     spec = GameSpec.model_validate(_base())
 
     calls = {"n": 0}
-    real_lcm = slotmath.spec.lcm
+    real_lcm = slotmath.models.spec.lcm
 
     def counting_lcm(*args):
         calls["n"] += 1
         return real_lcm(*args)
 
-    monkeypatch.setattr(slotmath.spec, "lcm", counting_lcm)
+    monkeypatch.setattr(slotmath.models.spec, "lcm", counting_lcm)
 
     first = spec.payout_unit_denominator()
     second = spec.payout_unit_denominator()

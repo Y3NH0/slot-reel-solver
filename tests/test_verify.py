@@ -1,9 +1,9 @@
 import copy
 import pytest
 
-from slotmath import naive
-from slotmath.metrics import build_metrics
-from slotmath.verify import ReelConfig, verify
+from slotmath.evaluation import naive
+from slotmath.models.metrics import build_metrics
+from slotmath.verification.verify import ReelConfig, verify
 from tests.fixtures import GOLDEN
 from tests.test_naive import hw
 

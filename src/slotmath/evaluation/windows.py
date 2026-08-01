@@ -15,7 +15,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Sequence
 
-from slotmath.spec import GameSpec
+from slotmath.models.spec import GameSpec
 
 
 def reel_windows(strip: Sequence[int], rows: int) -> list[tuple[int, ...]]:

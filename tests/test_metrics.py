@@ -1,6 +1,6 @@
 import pytest
 from fractions import Fraction
-from slotmath.metrics import build_metrics, exact_rtp, exact_win_rate
+from slotmath.models.metrics import build_metrics, exact_rtp, exact_win_rate
 from tests.test_naive import hw
 
 

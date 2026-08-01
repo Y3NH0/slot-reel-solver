@@ -47,7 +47,7 @@ def main(stdin_text: str) -> tuple[int, str]:
     if not target.exists():
         return 0, ""
 
-    # slotmath.cli._load_json has the equivalent guard; keep both in sync.
+    # slotmath.cli.app._load_json has the equivalent guard; keep both in sync.
     try:
         text = target.read_text(encoding="utf-8")
     except OSError as exc:
@@ -59,19 +59,20 @@ def main(stdin_text: str) -> tuple[int, str]:
     except json.JSONDecodeError as exc:
         return 2, f"{path}: invalid JSON at line {exc.lineno}: {exc.msg}\n"
 
-    # The evaluation stack (pydantic, slotmath.spec, slotmath.verify) is a
-    # heavy import that only ever needs to happen once we know the write
-    # actually touched a watched JSON file, which is why it lives here and
-    # not at module scope (see the module docstring's "fast path" note).
-    # If it fails -- most commonly because this hook is being run through an
-    # interpreter that lacks the project's dependencies rather than through
-    # .venv -- that must degrade to a readable message, not a raw
-    # ModuleNotFoundError traceback that looks like the artifact is broken.
+    # The evaluation stack (pydantic, slotmath.models.spec,
+    # slotmath.verification.verify) is a heavy import that only ever needs to
+    # happen once we know the write actually touched a watched JSON file,
+    # which is why it lives here and not at module scope (see the module
+    # docstring's "fast path" note). If it fails -- most commonly because
+    # this hook is being run through an interpreter that lacks the project's
+    # dependencies rather than through .venv -- that must degrade to a
+    # readable message, not a raw ModuleNotFoundError traceback that looks
+    # like the artifact is broken.
     try:
         from pydantic import ValidationError
 
-        from slotmath.spec import GameSpec, load_spec
-        from slotmath.verify import ReelConfig, verify
+        from slotmath.models.spec import GameSpec, load_spec
+        from slotmath.verification.verify import ReelConfig, verify
     except ImportError as exc:
         return 2, (
             f"verify_on_write hook cannot import the slotmath package "
@@ -99,9 +100,9 @@ def main(stdin_text: str) -> tuple[int, str]:
     if not spec_path.exists():
         return 2, f"{path}: referenced spec {config.spec} not found\n"
 
-    # slotmath.cli._load_pair has the equivalent guard; keep both in sync.
-    # Deliberately not shared code -- see the module docstring on why this
-    # hook does not import from slotmath.cli.
+    # slotmath.cli.app._load_pair has the equivalent guard; keep both in
+    # sync. Deliberately not shared code -- see the module docstring on why
+    # this hook does not import from slotmath.cli.
     try:
         spec = load_spec(spec_path)
     except json.JSONDecodeError as exc:

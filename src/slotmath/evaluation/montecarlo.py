@@ -23,7 +23,7 @@ from fractions import Fraction
 from math import sqrt
 from typing import Sequence
 
-from slotmath.spec import GameSpec
+from slotmath.models.spec import GameSpec
 
 
 @dataclass(frozen=True)

@@ -22,11 +22,11 @@ from typing import Iterable, Iterator
 
 from pydantic import BaseModel
 
-from slotmath import engine
-from slotmath.diophantine import _run_composition, search_last_reel
-from slotmath.metrics import build_metrics, exact_rtp, exact_win_rate
-from slotmath.spec import GameSpec
-from slotmath.verify import ReelConfig
+from slotmath.evaluation import engine
+from slotmath.solving.diophantine import _run_composition, search_last_reel
+from slotmath.models.metrics import build_metrics, exact_rtp, exact_win_rate
+from slotmath.models.spec import GameSpec
+from slotmath.verification.verify import ReelConfig
 
 VERSION = "0.1.0"
 
@@ -44,7 +44,7 @@ class SolverOptions(BaseModel):
     # of guessing configs/<spec.name>.json. None only when a caller
     # constructs a GameSpec in memory with no backing file (e.g. tests);
     # the CLI always sets this to the real input path (see _cmd_solve /
-    # _cmd_explore in cli.py).
+    # _cmd_explore in slotmath/cli/app.py).
     spec_path: str | None = None
 
 

@@ -13,15 +13,15 @@ from typing import Sequence
 
 from pydantic import BaseModel
 
-from slotmath.spec import GameSpec
+from slotmath.models.spec import GameSpec
 
 # Shared cap on prod(len(reel) for reel in reels) -- the cost driver for a
 # full cyclic enumeration (naive.evaluate, and anything that recomputes from
-# it, e.g. `slotmath report`). Living here rather than in verify.py or
-# cli.py lets every caller reach it without importing the evaluator modules
-# just for a size check. Not derived from engine.evaluate's signature-space
-# budget (a different, usually much smaller, cost axis) -- matched to it by
-# convention only.
+# it, e.g. `slotmath report`). Living here rather than in
+# slotmath.verification.verify or slotmath.cli.app lets every caller reach it
+# without importing the evaluator modules just for a size check. Not derived
+# from engine.evaluate's signature-space budget (a different, usually much
+# smaller, cost axis) -- matched to it by convention only.
 NAIVE_BUDGET = 5_000_000
 
 

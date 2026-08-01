@@ -20,9 +20,9 @@ from typing import Literal
 
 from pydantic import BaseModel
 
-from slotmath import engine, montecarlo, naive
-from slotmath.engine import SignatureBudgetExceeded
-from slotmath.metrics import (
+from slotmath.evaluation import engine, montecarlo, naive
+from slotmath.evaluation.engine import SignatureBudgetExceeded
+from slotmath.models.metrics import (
     BoardTooLargeError,
     Metrics,
     build_metrics,
@@ -30,7 +30,7 @@ from slotmath.metrics import (
     exact_rtp,
     exact_win_rate,
 )
-from slotmath.spec import GameSpec
+from slotmath.models.spec import GameSpec
 
 # Layer 1 float checks compare *display* floats (rtp/win_rate/volatility/
 # max_win) against values derived from the integer counts. These floats
@@ -177,8 +177,8 @@ def verify(
     # naive.evaluate is unbounded (prod(reel lengths)), so its cost is
     # checked directly, before it is ever called -- see
     # metrics.check_board_budget / metrics.NAIVE_BUDGET. Shared with
-    # cli.py's `report` command, which recomputes the same way (see finding
-    # 2 / the report-command regression note in the fix report).
+    # slotmath.cli.app's `report` command, which recomputes the same way
+    # (see finding 2 / the report-command regression note in the fix report).
     try:
         check_board_budget(config.reels)
     except BoardTooLargeError as exc:

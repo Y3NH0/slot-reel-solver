@@ -1,5 +1,5 @@
 import pytest
-from slotmath import montecarlo, naive
+from slotmath.evaluation import montecarlo, naive
 from tests.fixtures import GOLDEN
 from tests.test_naive import hw
 

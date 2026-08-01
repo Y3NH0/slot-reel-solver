@@ -12,22 +12,27 @@ from __future__ import annotations
 
 import argparse
 import json
-from fractions import Fraction
 from pathlib import Path
 
 from pydantic import ValidationError
 
-from slotmath import naive
-from slotmath.metrics import build_metrics, check_board_budget, exact_rtp, exact_win_rate
-from slotmath.spec import GameSpec, load_spec
-from slotmath.verify import ReelConfig, verify
+from slotmath.evaluation import naive
+from slotmath.models.metrics import build_metrics, check_board_budget
+from slotmath.models.spec import GameSpec, load_spec
+from slotmath.reporting.render import (
+    render_calibration,
+    render_payout_table,
+    render_spec_summary,
+)
+from slotmath.verification.verify import ReelConfig, verify
 
 
 def _load_json(path: Path, stderr) -> dict:
     # scripts/hooks/verify_on_write.py carries its own copy of this
     # read-and-parse guard. The duplication is deliberate: the hook's fast
-    # path must not import the evaluation stack, so it cannot import this
-    # function. Keep both in sync by hand.
+    # path must not import the evaluation stack (slotmath.evaluation /
+    # slotmath.verification), so it cannot import this function. Keep both
+    # in sync by hand.
     if not path.exists():
         print(f"{path}: not found", file=stderr)
         raise SystemExit(2)
@@ -53,14 +58,7 @@ def _cmd_spec(args, out, err) -> int:
     except ValidationError as exc:
         print(f"{args.path}: invalid GameSpec\n{exc}", file=err)
         return 2
-    print(f"name: {spec.name}", file=out)
-    print(f"grid: {spec.grid.cols}x{spec.grid.rows}", file=out)
-    print(f"symbols: {len(spec.symbols)}", file=out)
-    print(f"patterns: {', '.join(p.name for p in spec.patterns)}", file=out)
-    print(f"combine: {spec.combine}", file=out)
-    print(f"target rtp: {spec.targets.rtp}", file=out)
-    print(f"min_win_rate: {spec.targets.min_win_rate}", file=out)
-    print(f"payout_unit_denominator: {spec.payout_unit_denominator()}", file=out)
+    print(render_spec_summary(spec), file=out)
     return 0
 
 
@@ -112,25 +110,12 @@ def _cmd_report(args, out, err) -> int:
         print(f"{args.path}: cannot evaluate reels: {exc}", file=err)
         return 2
     m = build_metrics(spec, distribution)
-    print(f"spec: {config.spec}", file=out)
-    for i, reel in enumerate(config.reels):
-        print(f"reel{i} (len {len(reel)}): {reel}", file=out)
-    print(f"spin_count: {m.spin_count}", file=out)
-    print(f"win_count: {m.win_count}  win_rate: {exact_win_rate(m)}", file=out)
-    print(f"rtp: {exact_rtp(m)} = {m.rtp:.10f}", file=out)
-    print(f"volatility: {m.volatility:.6f}  max_win: {m.max_win}", file=out)
-    print("payout        combos   probability", file=out)
-    for b in m.payout_distribution:
-        prob = Fraction(b.combo_count, m.spin_count)
-        print(
-            f"{b.payout:>10}  {b.combo_count:>8}   {prob} = {float(prob):.6f}",
-            file=out,
-        )
+    print(render_payout_table(config, m), file=out)
     return 0
 
 
 def _cmd_solve(args, out, err) -> int:
-    from slotmath.solver import SolverOptions, solve
+    from slotmath.solving.solver import SolverOptions, solve
 
     data = _load_json(Path(args.path), err)
     try:
@@ -164,24 +149,14 @@ def _cmd_solve(args, out, err) -> int:
     return 0
 
 
-def _print_calibration(portfolio, entry_count: int, out, label: str = "calibration derived") -> None:
-    from slotmath.portfolio import FEATURE_NAMES
-
-    cal = portfolio.calibration
-    ranges_str = ", ".join(
-        f"{name}=[{lo:.4g}, {hi:.4g}]"
-        for name, (lo, hi) in zip(FEATURE_NAMES, cal["ranges"])
-    )
-    print(
-        f"{label} from {entry_count} entries: distance={cal['distance']:.4g}; "
-        f"ranges: {ranges_str}",
-        file=out,
-    )
-
-
 def _cmd_explore(args, out, err) -> int:
-    from slotmath.portfolio import Portfolio, maybe_calibrate, recalibrate, should_admit
-    from slotmath.solver import SolverOptions, solve
+    from slotmath.solving.portfolio import (
+        Portfolio,
+        maybe_calibrate,
+        recalibrate,
+        should_admit,
+    )
+    from slotmath.solving.solver import SolverOptions, solve
 
     data = _load_json(Path(args.path), err)
     try:
@@ -203,7 +178,12 @@ def _cmd_explore(args, out, err) -> int:
 
     if args.recalibrate:
         if recalibrate(portfolio):
-            _print_calibration(portfolio, len(portfolio.entries), out, label="recalibrated")
+            print(
+                render_calibration(
+                    portfolio.calibration, len(portfolio.entries), label="recalibrated"
+                ),
+                file=out,
+            )
         else:
             print("recalibrate requested but the portfolio is empty; nothing to calibrate from", file=out)
 
@@ -240,7 +220,10 @@ def _cmd_explore(args, out, err) -> int:
                 file=out,
             )
             if maybe_calibrate(portfolio, args.calibration_size):
-                _print_calibration(portfolio, len(portfolio.entries), out)
+                print(
+                    render_calibration(portfolio.calibration, len(portfolio.entries)),
+                    file=out,
+                )
         else:
             print(f"round {round_index}: admitted (portfolio now {len(portfolio.entries)})", file=out)
 

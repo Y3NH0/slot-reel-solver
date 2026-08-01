@@ -1,7 +1,7 @@
 import random
 import pytest
-from slotmath import engine, naive
-from slotmath.spec import GameSpec
+from slotmath.evaluation import engine, naive
+from slotmath.models.spec import GameSpec
 from tests.test_naive import hw
 
 

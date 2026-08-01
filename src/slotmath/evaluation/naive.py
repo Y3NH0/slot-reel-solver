@@ -15,8 +15,8 @@ from __future__ import annotations
 from itertools import product
 from typing import Sequence
 
-from slotmath.spec import GameSpec
-from slotmath.windows import reel_windows
+from slotmath.models.spec import GameSpec
+from slotmath.evaluation.windows import reel_windows
 
 
 def grid_payout_units(spec: GameSpec, columns: Sequence[tuple[int, ...]]) -> int:

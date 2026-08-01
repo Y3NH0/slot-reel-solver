@@ -2,9 +2,9 @@ import math
 
 import pytest
 
-from slotmath import naive
-from slotmath.metrics import Metrics, PayoutBucket, build_metrics
-from slotmath.portfolio import (
+from slotmath.evaluation import naive
+from slotmath.models.metrics import Metrics, PayoutBucket, build_metrics
+from slotmath.solving.portfolio import (
     FEATURE_NAMES,
     Portfolio,
     build_calibration,
@@ -17,7 +17,7 @@ from slotmath.portfolio import (
     recalibrate,
     should_admit,
 )
-from slotmath.verify import ReelConfig
+from slotmath.verification.verify import ReelConfig
 from tests.fixtures import GOLDEN
 from tests.test_naive import hw
 

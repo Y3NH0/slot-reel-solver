@@ -1,6 +1,6 @@
 import pytest
-from slotmath.naive import evaluate, grid_payout_units
-from slotmath.spec import GameSpec
+from slotmath.evaluation.naive import evaluate, grid_payout_units
+from slotmath.models.spec import GameSpec
 
 HOMEWORK = {
     "name": "hw",

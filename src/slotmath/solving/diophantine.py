@@ -51,8 +51,8 @@ from itertools import product
 from math import prod
 from typing import Sequence
 
-from slotmath.spec import GameSpec
-from slotmath.windows import column_plans, reel_windows, window_signature
+from slotmath.models.spec import GameSpec
+from slotmath.evaluation.windows import column_plans, reel_windows, window_signature
 
 
 def _last_column_payout_units(

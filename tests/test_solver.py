@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from slotmath.metrics import exact_rtp, exact_win_rate
-from slotmath.solver import (
+from slotmath.models.metrics import exact_rtp, exact_win_rate
+from slotmath.solving.solver import (
     SolverOptions,
     candidate_length_tuples,
     congruence_ok,
@@ -14,8 +14,8 @@ from slotmath.solver import (
     required_units,
     solve,
 )
-from slotmath.spec import load_spec
-from slotmath.verify import verify
+from slotmath.models.spec import load_spec
+from slotmath.verification.verify import verify
 from tests.fixtures import GOLDEN
 from tests.test_naive import hw
 

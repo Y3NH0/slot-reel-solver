@@ -3,8 +3,8 @@ from fractions import Fraction
 
 import pytest
 
-from slotmath import engine, naive
-from slotmath.metrics import build_metrics, exact_rtp, exact_win_rate
+from slotmath.evaluation import engine, naive
+from slotmath.models.metrics import build_metrics, exact_rtp, exact_win_rate
 from tests.fixtures import GOLDEN
 from tests.test_naive import hw
 

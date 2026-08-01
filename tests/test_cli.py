@@ -4,9 +4,9 @@ import stat
 
 import pytest
 
-from slotmath import naive
+from slotmath.evaluation import naive
 from slotmath.cli import main
-from slotmath.metrics import build_metrics
+from slotmath.models.metrics import build_metrics
 from tests.fixtures import GOLDEN
 from tests.test_naive import hw
 

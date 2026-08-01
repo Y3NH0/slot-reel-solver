@@ -84,8 +84,8 @@ import math
 
 from pydantic import BaseModel
 
-from slotmath.metrics import Metrics
-from slotmath.verify import ReelConfig
+from slotmath.models.metrics import Metrics
+from slotmath.verification.verify import ReelConfig
 
 FEATURE_NAMES = ("win_rate", "volatility", "log_max_win", "payout_entropy", "spin_count")
 

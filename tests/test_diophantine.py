@@ -2,14 +2,14 @@ from fractions import Fraction
 
 import pytest
 
-from slotmath import engine
-from slotmath.diophantine import (
+from slotmath.evaluation import engine
+from slotmath.solving.diophantine import (
     has_mixed_signs,
     score,
     search_last_reel,
     signature_weights,
 )
-from slotmath.metrics import build_metrics, exact_rtp
+from slotmath.models.metrics import build_metrics, exact_rtp
 from tests.fixtures import GOLDEN
 from tests.test_naive import hw
 

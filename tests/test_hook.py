@@ -10,8 +10,8 @@ import pytest
 sys.path.insert(0, str(Path("scripts/hooks").resolve()))
 import verify_on_write  # noqa: E402
 
-from slotmath import naive
-from slotmath.metrics import build_metrics
+from slotmath.evaluation import naive
+from slotmath.models.metrics import build_metrics
 from tests.fixtures import GOLDEN
 from tests.test_naive import hw
 
@@ -38,7 +38,7 @@ def write_solution(tmp_path, g, **mutate):
 
 
 def test_unrelated_path_exits_zero_silently():
-    code, err = verify_on_write.main(payload("src/slotmath/engine.py"))
+    code, err = verify_on_write.main(payload("src/slotmath/evaluation/engine.py"))
     assert code == 0 and err == ""
 
 

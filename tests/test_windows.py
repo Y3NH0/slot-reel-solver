@@ -1,6 +1,11 @@
 import pytest
-from slotmath.spec import GameSpec
-from slotmath.windows import ColumnPlan, column_plans, reel_windows, window_signature
+from slotmath.models.spec import GameSpec
+from slotmath.evaluation.windows import (
+    ColumnPlan,
+    column_plans,
+    reel_windows,
+    window_signature,
+)
 
 
 def test_windows_wrap_around_cyclically():
