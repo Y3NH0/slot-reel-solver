@@ -1,4 +1,6 @@
 import json
+import os
+import stat
 import sys
 from pathlib import Path
 
@@ -84,3 +86,33 @@ def test_hook_never_modifies_the_file(tmp_path):
     before = path.read_bytes()
     verify_on_write.main(payload(path))
     assert path.read_bytes() == before
+
+
+def test_directory_path_exits_two_not_traceback(tmp_path):
+    target = tmp_path / "solutions"
+    target.mkdir()
+    adir = target / "adir.json"
+    adir.mkdir()
+    code, err = verify_on_write.main(payload(adir))
+    assert code == 2
+    assert "Traceback" not in err
+    assert str(adir) in err
+
+
+@pytest.mark.skipif(
+    os.name == "nt" or (hasattr(os, "geteuid") and os.geteuid() == 0),
+    reason="permission bits are not enforceable on Windows or as root",
+)
+def test_unreadable_file_exits_two_not_traceback(tmp_path):
+    target = tmp_path / "solutions"
+    target.mkdir()
+    bad = target / "unreadable.json"
+    bad.write_text('{"a": 1}', encoding="utf-8")
+    bad.chmod(0)
+    try:
+        code, err = verify_on_write.main(payload(bad))
+        assert code == 2
+        assert "Traceback" not in err
+        assert str(bad) in err
+    finally:
+        bad.chmod(stat.S_IRUSR | stat.S_IWUSR)

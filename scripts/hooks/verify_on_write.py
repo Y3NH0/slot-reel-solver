@@ -47,8 +47,15 @@ def main(stdin_text: str) -> tuple[int, str]:
     if not target.exists():
         return 0, ""
 
+    # slotmath.cli._load_json has the equivalent guard; keep both in sync.
     try:
-        data = json.loads(target.read_text(encoding="utf-8"))
+        text = target.read_text(encoding="utf-8")
+    except OSError as exc:
+        return 2, f"{path}: cannot read ({exc.strerror})\n"
+    except UnicodeDecodeError:
+        return 2, f"{path}: not valid UTF-8 text\n"
+    try:
+        data = json.loads(text)
     except json.JSONDecodeError as exc:
         return 2, f"{path}: invalid JSON at line {exc.lineno}: {exc.msg}\n"
 
