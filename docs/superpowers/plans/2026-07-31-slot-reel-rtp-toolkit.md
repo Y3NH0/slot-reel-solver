@@ -3596,9 +3596,21 @@ Then RTP is exactly on target iff `sum_s n_s * w_s = 0`, where `n_s` counts
 positions in the last reel carrying signature `s`. The last reel's length is
 `sum_s n_s`.
 
-Existence: pick `w_p > 0` and `w_q < 0`, set `n_p = |w_q|` and `n_q = w_p`.
-Both signs always occur because there is always an almost-always-winning
-signature and an almost-never-winning one.
+Existence has two distinct routes, and an implementation must recognise both:
+
+1. **Mixed signs** -- pick `w_p > 0` and `w_q < 0`, set `n_p = |w_q|` and
+   `n_q = w_p`.
+2. **A zero weight** -- if some `w_z == 0`, put the whole last reel on
+   signature `z`, at any length.
+
+Mixed signs do NOT always occur. Golden fixtures A and B have 15 negative
+weights and one zero, no positives at all; they reach the target by route 2
+with a uniform last reel (`[1]*6` and `[2]*6`) whose single signature has
+weight 0. Only fixture C has mixed signs (1 positive, 15 negative).
+
+Both routes can be absent -- all weights the same sign with no zero -- in
+which case that pair of fixed reels has no solution and the solver must move
+on. `search_last_reel` trying uniform strips first is a cheap probe of route 2.
 
 Observed weights for one fixed pair of reels:
 
