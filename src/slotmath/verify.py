@@ -1,0 +1,188 @@
+"""Three-layer verification.
+
+Layer 1 reads the artifact and checks it against itself -- zero computation,
+because the integer counts make contradictions visible on their own.
+Layer 2 recomputes with both engines and requires exact Fraction agreement
+between naive, engine and the file.
+Layer 3 simulates along an independent path (montecarlo.py).
+
+Failures in layer 2 must distinguish "the engines disagree with each other"
+(a program bug) from "the engines agree but the file does not" (a stale or
+edited artifact). Reporting both as "verification failed" is the same as not
+reporting.
+"""
+
+from __future__ import annotations
+
+from fractions import Fraction
+from typing import Literal
+
+from pydantic import BaseModel
+
+from slotmath import engine, montecarlo, naive
+from slotmath.metrics import Metrics, build_metrics, exact_rtp, exact_win_rate
+from slotmath.spec import GameSpec
+
+
+class ReelConfig(BaseModel):
+    spec: str
+    reels: list[list[int]]
+    metrics: Metrics
+    solver: dict | None = None
+
+
+class Gate(BaseModel):
+    name: str
+    passed: bool
+    severity: Literal["fail", "warn"]
+    detail: str
+
+
+class VerifyReport(BaseModel):
+    gates: list[Gate]
+    passed: bool
+
+    def render(self) -> str:
+        lines = []
+        for gate in self.gates:
+            mark = "PASS" if gate.passed else gate.severity.upper()
+            lines.append(f"[{mark:4}] {gate.name}: {gate.detail}")
+        lines.append(f"verdict: {'PASS' if self.passed else 'FAIL'}")
+        return "\n".join(lines)
+
+
+def _distribution(metrics: Metrics) -> dict[int, int]:
+    return {b.payout_units: b.combo_count for b in metrics.payout_distribution}
+
+
+def verify(
+    spec: GameSpec,
+    config: ReelConfig,
+    mc_spins: int = 2_000_000,
+    mc_seed: int = 20260731,
+    sigma_limit: float = 5.0,
+) -> VerifyReport:
+    gates: list[Gate] = []
+
+    def add(name, passed, detail, severity="fail"):
+        gates.append(Gate(name=name, passed=passed, severity=severity, detail=detail))
+
+    # ---- symbols declared -------------------------------------------------
+    unknown = sorted({s for reel in config.reels for s in reel} - set(spec.symbols))
+    add(
+        "symbols_declared",
+        not unknown,
+        "all reel symbols are declared" if not unknown
+        else f"reels contain undeclared symbols: {unknown}",
+    )
+    if unknown:
+        return VerifyReport(gates=gates, passed=False)
+
+    # ---- Layer 1: file internal consistency -------------------------------
+    m = config.metrics
+    dist = _distribution(m)
+    problems: list[str] = []
+
+    expected_spins = 1
+    for reel in config.reels:
+        expected_spins *= len(reel)
+    if m.spin_count != expected_spins:
+        problems.append(
+            f"spin_count {m.spin_count} != product of reel lengths {expected_spins}"
+        )
+    if sum(dist.values()) != m.spin_count:
+        problems.append(
+            f"combo_count sum {sum(dist.values())} != spin_count {m.spin_count}"
+        )
+    units = sum(u * c for u, c in dist.items())
+    if units != m.total_payout_units:
+        problems.append(
+            f"sum(payout_units x combo_count) {units} != total_payout_units "
+            f"{m.total_payout_units}"
+        )
+    if m.win_count != m.spin_count - dist.get(0, 0):
+        problems.append(f"win_count {m.win_count} disagrees with the zero bucket")
+    for bucket in m.payout_distribution:
+        if bucket.payout_units / m.payout_unit_denominator != bucket.payout:
+            problems.append(f"bucket {bucket.payout_units} payout float is inconsistent")
+
+    add(
+        "file_consistency",
+        not problems,
+        "artifact is internally consistent" if not problems else "; ".join(problems),
+    )
+    if problems:
+        return VerifyReport(gates=gates, passed=False)
+
+    # ---- Layer 2: engine vs naive vs file ---------------------------------
+    naive_dist = naive.evaluate(spec, config.reels)
+    engine_dist = engine.evaluate(spec, config.reels)
+
+    engines_agree = naive_dist == engine_dist
+    add(
+        "engine_matches_naive",
+        engines_agree,
+        "signature engine agrees with full enumeration" if engines_agree
+        else "ENGINES DISAGREE -- this is a program bug, not a bad artifact. "
+             f"naive={naive_dist} engine={engine_dist}",
+    )
+    if not engines_agree:
+        return VerifyReport(gates=gates, passed=False)
+
+    file_agrees = naive_dist == dist
+    add(
+        "file_matches_recompute",
+        file_agrees,
+        "artifact metrics match recomputation" if file_agrees
+        else "both engines agree with each other but not with the file -- the "
+             "artifact is stale or was edited. Re-run the solver.",
+    )
+    if not file_agrees:
+        return VerifyReport(gates=gates, passed=False)
+
+    recomputed = build_metrics(spec, naive_dist)
+
+    # ---- targets ----------------------------------------------------------
+    actual_rtp = exact_rtp(recomputed)
+    on_target = actual_rtp == spec.targets.rtp
+    add(
+        "rtp_exact",
+        on_target,
+        f"RTP is exactly {actual_rtp}" if on_target
+        else f"RTP is {actual_rtp} ({float(actual_rtp):.10f}), target is "
+             f"{spec.targets.rtp}. There is no tolerance band.",
+    )
+
+    actual_win_rate = exact_win_rate(recomputed)
+    meets = actual_win_rate >= spec.targets.min_win_rate
+    add(
+        "min_win_rate",
+        meets,
+        f"win_rate {actual_win_rate} >= {spec.targets.min_win_rate}" if meets
+        else f"win_rate {actual_win_rate} is below {spec.targets.min_win_rate}",
+    )
+
+    # ---- Layer 3: independent Monte Carlo ---------------------------------
+    sim = montecarlo.simulate(spec, config.reels, spins=mc_spins, seed=mc_seed)
+    sigma = montecarlo.sigma_deviation(spec, config.reels, sim, naive_dist)
+    within = abs(sigma) < sigma_limit
+    add(
+        "monte_carlo",
+        within,
+        f"simulated RTP is {sigma:+.2f} sigma from exact "
+        f"({mc_spins} spins, seed {mc_seed})",
+    )
+
+    # ---- warnings ---------------------------------------------------------
+    never_loses = actual_win_rate == 1
+    add(
+        "win_rate_not_degenerate",
+        not never_loses,
+        "win_rate is below 1" if not never_loses
+        else "win_rate is exactly 1: the player never comes up empty. Legal "
+             "under the rules but commercially unusual.",
+        severity="warn",
+    )
+
+    passed = all(g.passed for g in gates if g.severity == "fail")
+    return VerifyReport(gates=gates, passed=passed)
