@@ -1,0 +1,814 @@
+{
+  "spin_count": 2160,
+  "combine": "max",
+  "credit_semantics": {
+    "max_eligible": "all tied argmax patterns receive attribution",
+    "unique_credit": "only a sole argmax receives attribution",
+    "note": "The repository's payout evaluators return only a scalar payout and do not currently attribute max ties to pattern identities."
+  },
+  "entries": [
+    {
+      "symbol": 0,
+      "pattern_index": 0,
+      "pattern": "TL",
+      "payout_units": 5,
+      "raw_count": 0,
+      "raw_probability": "0",
+      "winning_count": 0,
+      "winning_probability": "0",
+      "max_eligible_count": 0,
+      "max_eligible_probability": "0",
+      "unique_credit_count": 0,
+      "unique_credit_probability": "0",
+      "reasons": [
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 0,
+          "rows": [
+            0,
+            1
+          ],
+          "symbol": 0
+        },
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 1,
+          "rows": [
+            0,
+            1
+          ],
+          "symbol": 0
+        }
+      ]
+    },
+    {
+      "symbol": 0,
+      "pattern_index": 1,
+      "pattern": "TR",
+      "payout_units": 5,
+      "raw_count": 0,
+      "raw_probability": "0",
+      "winning_count": 0,
+      "winning_probability": "0",
+      "max_eligible_count": 0,
+      "max_eligible_probability": "0",
+      "unique_credit_count": 0,
+      "unique_credit_probability": "0",
+      "reasons": [
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 1,
+          "rows": [
+            0,
+            1
+          ],
+          "symbol": 0
+        },
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 2,
+          "rows": [
+            0,
+            1
+          ],
+          "symbol": 0
+        }
+      ]
+    },
+    {
+      "symbol": 0,
+      "pattern_index": 2,
+      "pattern": "BL",
+      "payout_units": 5,
+      "raw_count": 0,
+      "raw_probability": "0",
+      "winning_count": 0,
+      "winning_probability": "0",
+      "max_eligible_count": 0,
+      "max_eligible_probability": "0",
+      "unique_credit_count": 0,
+      "unique_credit_probability": "0",
+      "reasons": [
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 0,
+          "rows": [
+            1,
+            2
+          ],
+          "symbol": 0
+        },
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 1,
+          "rows": [
+            1,
+            2
+          ],
+          "symbol": 0
+        }
+      ]
+    },
+    {
+      "symbol": 0,
+      "pattern_index": 3,
+      "pattern": "BR",
+      "payout_units": 5,
+      "raw_count": 0,
+      "raw_probability": "0",
+      "winning_count": 0,
+      "winning_probability": "0",
+      "max_eligible_count": 0,
+      "max_eligible_probability": "0",
+      "unique_credit_count": 0,
+      "unique_credit_probability": "0",
+      "reasons": [
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 1,
+          "rows": [
+            1,
+            2
+          ],
+          "symbol": 0
+        },
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 2,
+          "rows": [
+            1,
+            2
+          ],
+          "symbol": 0
+        }
+      ]
+    },
+    {
+      "symbol": 0,
+      "pattern_index": 4,
+      "pattern": "FULL",
+      "payout_units": 25,
+      "raw_count": 0,
+      "raw_probability": "0",
+      "winning_count": 0,
+      "winning_probability": "0",
+      "max_eligible_count": 0,
+      "max_eligible_probability": "0",
+      "unique_credit_count": 0,
+      "unique_credit_probability": "0",
+      "reasons": [
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 0,
+          "rows": [
+            0,
+            1,
+            2
+          ],
+          "symbol": 0
+        },
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 1,
+          "rows": [
+            0,
+            1,
+            2
+          ],
+          "symbol": 0
+        },
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 2,
+          "rows": [
+            0,
+            1,
+            2
+          ],
+          "symbol": 0
+        }
+      ]
+    },
+    {
+      "symbol": 1,
+      "pattern_index": 0,
+      "pattern": "TL",
+      "payout_units": 11,
+      "raw_count": 0,
+      "raw_probability": "0",
+      "winning_count": 0,
+      "winning_probability": "0",
+      "max_eligible_count": 0,
+      "max_eligible_probability": "0",
+      "unique_credit_count": 0,
+      "unique_credit_probability": "0",
+      "reasons": [
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 0,
+          "rows": [
+            0,
+            1
+          ],
+          "symbol": 1
+        },
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 1,
+          "rows": [
+            0,
+            1
+          ],
+          "symbol": 1
+        }
+      ]
+    },
+    {
+      "symbol": 1,
+      "pattern_index": 1,
+      "pattern": "TR",
+      "payout_units": 11,
+      "raw_count": 0,
+      "raw_probability": "0",
+      "winning_count": 0,
+      "winning_probability": "0",
+      "max_eligible_count": 0,
+      "max_eligible_probability": "0",
+      "unique_credit_count": 0,
+      "unique_credit_probability": "0",
+      "reasons": [
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 1,
+          "rows": [
+            0,
+            1
+          ],
+          "symbol": 1
+        },
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 2,
+          "rows": [
+            0,
+            1
+          ],
+          "symbol": 1
+        }
+      ]
+    },
+    {
+      "symbol": 1,
+      "pattern_index": 2,
+      "pattern": "BL",
+      "payout_units": 11,
+      "raw_count": 0,
+      "raw_probability": "0",
+      "winning_count": 0,
+      "winning_probability": "0",
+      "max_eligible_count": 0,
+      "max_eligible_probability": "0",
+      "unique_credit_count": 0,
+      "unique_credit_probability": "0",
+      "reasons": [
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 0,
+          "rows": [
+            1,
+            2
+          ],
+          "symbol": 1
+        },
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 1,
+          "rows": [
+            1,
+            2
+          ],
+          "symbol": 1
+        }
+      ]
+    },
+    {
+      "symbol": 1,
+      "pattern_index": 3,
+      "pattern": "BR",
+      "payout_units": 11,
+      "raw_count": 0,
+      "raw_probability": "0",
+      "winning_count": 0,
+      "winning_probability": "0",
+      "max_eligible_count": 0,
+      "max_eligible_probability": "0",
+      "unique_credit_count": 0,
+      "unique_credit_probability": "0",
+      "reasons": [
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 1,
+          "rows": [
+            1,
+            2
+          ],
+          "symbol": 1
+        },
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 2,
+          "rows": [
+            1,
+            2
+          ],
+          "symbol": 1
+        }
+      ]
+    },
+    {
+      "symbol": 1,
+      "pattern_index": 4,
+      "pattern": "FULL",
+      "payout_units": 55,
+      "raw_count": 0,
+      "raw_probability": "0",
+      "winning_count": 0,
+      "winning_probability": "0",
+      "max_eligible_count": 0,
+      "max_eligible_probability": "0",
+      "unique_credit_count": 0,
+      "unique_credit_probability": "0",
+      "reasons": [
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 0,
+          "rows": [
+            0,
+            1,
+            2
+          ],
+          "symbol": 1
+        },
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 1,
+          "rows": [
+            0,
+            1,
+            2
+          ],
+          "symbol": 1
+        },
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 2,
+          "rows": [
+            0,
+            1,
+            2
+          ],
+          "symbol": 1
+        }
+      ]
+    },
+    {
+      "symbol": 2,
+      "pattern_index": 0,
+      "pattern": "TL",
+      "payout_units": 20,
+      "raw_count": 720,
+      "raw_probability": "1/3",
+      "winning_count": 720,
+      "winning_probability": "1/3",
+      "max_eligible_count": 540,
+      "max_eligible_probability": "1/4",
+      "unique_credit_count": 72,
+      "unique_credit_probability": "1/30",
+      "reasons": []
+    },
+    {
+      "symbol": 2,
+      "pattern_index": 1,
+      "pattern": "TR",
+      "payout_units": 20,
+      "raw_count": 720,
+      "raw_probability": "1/3",
+      "winning_count": 720,
+      "winning_probability": "1/3",
+      "max_eligible_count": 540,
+      "max_eligible_probability": "1/4",
+      "unique_credit_count": 126,
+      "unique_credit_probability": "7/120",
+      "reasons": []
+    },
+    {
+      "symbol": 2,
+      "pattern_index": 2,
+      "pattern": "BL",
+      "payout_units": 20,
+      "raw_count": 720,
+      "raw_probability": "1/3",
+      "winning_count": 720,
+      "winning_probability": "1/3",
+      "max_eligible_count": 540,
+      "max_eligible_probability": "1/4",
+      "unique_credit_count": 72,
+      "unique_credit_probability": "1/30",
+      "reasons": []
+    },
+    {
+      "symbol": 2,
+      "pattern_index": 3,
+      "pattern": "BR",
+      "payout_units": 20,
+      "raw_count": 720,
+      "raw_probability": "1/3",
+      "winning_count": 720,
+      "winning_probability": "1/3",
+      "max_eligible_count": 540,
+      "max_eligible_probability": "1/4",
+      "unique_credit_count": 126,
+      "unique_credit_probability": "7/120",
+      "reasons": []
+    },
+    {
+      "symbol": 2,
+      "pattern_index": 4,
+      "pattern": "FULL",
+      "payout_units": 100,
+      "raw_count": 180,
+      "raw_probability": "1/12",
+      "winning_count": 180,
+      "winning_probability": "1/12",
+      "max_eligible_count": 180,
+      "max_eligible_probability": "1/12",
+      "unique_credit_count": 180,
+      "unique_credit_probability": "1/12",
+      "reasons": []
+    },
+    {
+      "symbol": 3,
+      "pattern_index": 0,
+      "pattern": "TL",
+      "payout_units": 60,
+      "raw_count": 0,
+      "raw_probability": "0",
+      "winning_count": 0,
+      "winning_probability": "0",
+      "max_eligible_count": 0,
+      "max_eligible_probability": "0",
+      "unique_credit_count": 0,
+      "unique_credit_probability": "0",
+      "reasons": [
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 0,
+          "rows": [
+            0,
+            1
+          ],
+          "symbol": 3
+        },
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 1,
+          "rows": [
+            0,
+            1
+          ],
+          "symbol": 3
+        }
+      ]
+    },
+    {
+      "symbol": 3,
+      "pattern_index": 1,
+      "pattern": "TR",
+      "payout_units": 60,
+      "raw_count": 0,
+      "raw_probability": "0",
+      "winning_count": 0,
+      "winning_probability": "0",
+      "max_eligible_count": 0,
+      "max_eligible_probability": "0",
+      "unique_credit_count": 0,
+      "unique_credit_probability": "0",
+      "reasons": [
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 1,
+          "rows": [
+            0,
+            1
+          ],
+          "symbol": 3
+        },
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 2,
+          "rows": [
+            0,
+            1
+          ],
+          "symbol": 3
+        }
+      ]
+    },
+    {
+      "symbol": 3,
+      "pattern_index": 2,
+      "pattern": "BL",
+      "payout_units": 60,
+      "raw_count": 0,
+      "raw_probability": "0",
+      "winning_count": 0,
+      "winning_probability": "0",
+      "max_eligible_count": 0,
+      "max_eligible_probability": "0",
+      "unique_credit_count": 0,
+      "unique_credit_probability": "0",
+      "reasons": [
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 0,
+          "rows": [
+            1,
+            2
+          ],
+          "symbol": 3
+        },
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 1,
+          "rows": [
+            1,
+            2
+          ],
+          "symbol": 3
+        }
+      ]
+    },
+    {
+      "symbol": 3,
+      "pattern_index": 3,
+      "pattern": "BR",
+      "payout_units": 60,
+      "raw_count": 0,
+      "raw_probability": "0",
+      "winning_count": 0,
+      "winning_probability": "0",
+      "max_eligible_count": 0,
+      "max_eligible_probability": "0",
+      "unique_credit_count": 0,
+      "unique_credit_probability": "0",
+      "reasons": [
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 1,
+          "rows": [
+            1,
+            2
+          ],
+          "symbol": 3
+        },
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 2,
+          "rows": [
+            1,
+            2
+          ],
+          "symbol": 3
+        }
+      ]
+    },
+    {
+      "symbol": 3,
+      "pattern_index": 4,
+      "pattern": "FULL",
+      "payout_units": 300,
+      "raw_count": 0,
+      "raw_probability": "0",
+      "winning_count": 0,
+      "winning_probability": "0",
+      "max_eligible_count": 0,
+      "max_eligible_probability": "0",
+      "unique_credit_count": 0,
+      "unique_credit_probability": "0",
+      "reasons": [
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 0,
+          "rows": [
+            0,
+            1,
+            2
+          ],
+          "symbol": 3
+        },
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 1,
+          "rows": [
+            0,
+            1,
+            2
+          ],
+          "symbol": 3
+        },
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 2,
+          "rows": [
+            0,
+            1,
+            2
+          ],
+          "symbol": 3
+        }
+      ]
+    },
+    {
+      "symbol": 4,
+      "pattern_index": 0,
+      "pattern": "TL",
+      "payout_units": 100,
+      "raw_count": 0,
+      "raw_probability": "0",
+      "winning_count": 0,
+      "winning_probability": "0",
+      "max_eligible_count": 0,
+      "max_eligible_probability": "0",
+      "unique_credit_count": 0,
+      "unique_credit_probability": "0",
+      "reasons": [
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 0,
+          "rows": [
+            0,
+            1
+          ],
+          "symbol": 4
+        },
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 1,
+          "rows": [
+            0,
+            1
+          ],
+          "symbol": 4
+        }
+      ]
+    },
+    {
+      "symbol": 4,
+      "pattern_index": 1,
+      "pattern": "TR",
+      "payout_units": 100,
+      "raw_count": 0,
+      "raw_probability": "0",
+      "winning_count": 0,
+      "winning_probability": "0",
+      "max_eligible_count": 0,
+      "max_eligible_probability": "0",
+      "unique_credit_count": 0,
+      "unique_credit_probability": "0",
+      "reasons": [
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 1,
+          "rows": [
+            0,
+            1
+          ],
+          "symbol": 4
+        },
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 2,
+          "rows": [
+            0,
+            1
+          ],
+          "symbol": 4
+        }
+      ]
+    },
+    {
+      "symbol": 4,
+      "pattern_index": 2,
+      "pattern": "BL",
+      "payout_units": 100,
+      "raw_count": 0,
+      "raw_probability": "0",
+      "winning_count": 0,
+      "winning_probability": "0",
+      "max_eligible_count": 0,
+      "max_eligible_probability": "0",
+      "unique_credit_count": 0,
+      "unique_credit_probability": "0",
+      "reasons": [
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 0,
+          "rows": [
+            1,
+            2
+          ],
+          "symbol": 4
+        },
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 1,
+          "rows": [
+            1,
+            2
+          ],
+          "symbol": 4
+        }
+      ]
+    },
+    {
+      "symbol": 4,
+      "pattern_index": 3,
+      "pattern": "BR",
+      "payout_units": 100,
+      "raw_count": 0,
+      "raw_probability": "0",
+      "winning_count": 0,
+      "winning_probability": "0",
+      "max_eligible_count": 0,
+      "max_eligible_probability": "0",
+      "unique_credit_count": 0,
+      "unique_credit_probability": "0",
+      "reasons": [
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 1,
+          "rows": [
+            1,
+            2
+          ],
+          "symbol": 4
+        },
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 2,
+          "rows": [
+            1,
+            2
+          ],
+          "symbol": 4
+        }
+      ]
+    },
+    {
+      "symbol": 4,
+      "pattern_index": 4,
+      "pattern": "FULL",
+      "payout_units": 500,
+      "raw_count": 0,
+      "raw_probability": "0",
+      "winning_count": 0,
+      "winning_probability": "0",
+      "max_eligible_count": 0,
+      "max_eligible_probability": "0",
+      "unique_credit_count": 0,
+      "unique_credit_probability": "0",
+      "reasons": [
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 0,
+          "rows": [
+            0,
+            1,
+            2
+          ],
+          "symbol": 4
+        },
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 1,
+          "rows": [
+            0,
+            1,
+            2
+          ],
+          "symbol": 4
+        },
+        {
+          "kind": "missing_cyclic_mask",
+          "column": 2,
+          "rows": [
+            0,
+            1,
+            2
+          ],
+          "symbol": 4
+        }
+      ]
+    }
+  ]
+}

@@ -13,8 +13,8 @@ Floats (`rtp`, `win_rate`, `volatility`, `max_win` in a solved artifact) only ev
 The package is organized by responsibility, not by which file happens to import which:
 
 - **`slotmath.models`** — the two artifact schemas. `spec.py` defines `GameSpec` (grid, symbols, patterns, targets) as the single trust boundary for all external input, including the `Rational` type that coerces probabilities/multipliers to exact `Fraction`. `metrics.py` derives reportable `Metrics` (RTP, win rate, volatility, payout distribution) from an integer payout distribution.
-- **`slotmath.evaluation`** — three independent evaluators that compute a payout distribution from a `GameSpec` and a set of reels, plus the shared cyclic-window/signature geometry (`windows.py`) that `naive.py`, `engine.py`, and `diophantine.py` (in `solving`) build on. `montecarlo.py` deliberately does **not** build on that geometry — see "Verification model" below.
-- **`slotmath.solving`** — turns a `GameSpec` into reels that hit its targets. `diophantine.py` solves the last reel exactly as a linear system; `solver.py` orchestrates a multi-stage search (congruence-aware reel-length selection, run-composition seeding, the exact Diophantine search, and a local-search fallback); `portfolio.py` keeps a diversity-filtered collection of solutions across repeated `explore` runs.
+- **`slotmath.evaluation`** — three independent evaluators that compute a payout distribution from a `GameSpec` and a set of reels, plus the shared cyclic-window/signature geometry (`windows.py`) that `naive.py`, `engine.py`, and `diophantine.py` (in `solving`) build on. `montecarlo.py` deliberately does **not** build on that geometry — see "Verification model" below. `coverage.py` + `coverage_naive.py` + `coverage_engine.py` answer a different question from the payout evaluators — *which* `(symbol, pattern)` pairs can occur, and how often — see "Coverage" below.
+- **`slotmath.solving`** — turns a `GameSpec` into reels that hit its targets. `diophantine.py` solves the last reel exactly as a linear system; `solver.py` orchestrates a multi-stage search (congruence-aware reel-length selection, run-composition seeding, the exact Diophantine search, and a local-search fallback); `portfolio.py` keeps a diversity-filtered collection of solutions across repeated `explore` runs; `feasibility.py` says whether a failed solve was proven impossible or merely unfound.
 - **`slotmath.verification`** — `verify.py`'s three-layer gate sequence (below), the only place a `ReelConfig` artifact is judged pass/fail.
 - **`slotmath.reporting`** — pure text builders (`render.py`) that turn a `GameSpec`, a `ReelConfig` + `Metrics`, or a portfolio calibration dict into the exact strings the CLI prints. Kept separate from argument parsing so "what to compute" and "how to show it" change independently.
 - **`slotmath.cli`** — `app.py` wires everything into the `slotmath` command: argument parsing, dispatch, and the exit-code contract.
@@ -31,12 +31,14 @@ flowchart LR
         naive["naive.py<br/>full enumeration (trust anchor)"]
         engine["engine.py<br/>signature aggregation (fast)"]
         montecarlo["montecarlo.py<br/>independent simulation"]
+        coverage["coverage*.py<br/>exact symbol x pattern<br/>attribution (2 paths)"]
     end
 
     subgraph solving["slotmath.solving"]
         diophantine["diophantine.py<br/>exact last-reel search"]
         solver["solver.py<br/>4-stage orchestration"]
         portfolio["portfolio.py<br/>diversity-filtered explore"]
+        feasibility["feasibility.py<br/>SolveStatus + bounded proof"]
     end
 
     subgraph verification["slotmath.verification"]
@@ -96,7 +98,8 @@ flowchart TD
     A(["slotmath verify"]) --> B{"symbols_declared"}
     B -- "no" --> X1[["exit 1: FAIL"]]
     B -- "yes" --> C["all_symbols_used<br/>(does not short-circuit)"]
-    C --> D{"Layer 1: file_consistency<br/>(integers + derived floats self-check)"}
+    C --> C2["per_reel_symbol_coverage<br/>(only if spec.coverage asks;<br/>does not short-circuit)"]
+    C2 --> D{"Layer 1: file_consistency<br/>(integers + derived floats self-check)"}
     D -- "no" --> X2[["exit 1: FAIL"]]
     D -- "yes" --> E{"Layer 2: engine_matches_naive"}
     E -- "no" --> X3[["exit 1: FAIL - program bug"]]
@@ -107,7 +110,8 @@ flowchart TD
     G --> I["min_win_rate:<br/>exact Fraction >= target"]
     G --> J["Layer 3: monte_carlo<br/>fixed-seed sim within 5 sigma"]
     G --> K["win_rate_not_degenerate<br/>(warning only, never fails the verdict)"]
-    C & H & I & J & K --> L{"every fail-severity gate passed?"}
+    G --> M["symbol_pattern_coverage<br/>(only if spec.coverage asks;<br/>exact, never Monte Carlo)"]
+    C & C2 & H & I & J & K & M --> L{"every fail-severity gate passed?"}
     L -- "yes" --> Pass(["exit 0: PASS"])
     L -- "no" --> Fail(["exit 1: FAIL"])
 ```
@@ -116,6 +120,62 @@ flowchart TD
 
 `file_consistency` (Layer 1) also checks the four *display* floats (`rtp`, `win_rate`, `volatility`, `max_win`) against values derived from the integer counts, with a tolerance (`_FLOAT_RTOL = 1e-9`) that exists **only** to absorb float round-trip noise in that display check — it never touches the exact `Fraction` comparisons in `rtp_exact`/`min_win_rate`.
 
+The two coverage gates appear **only** when the spec opts in via a `coverage` block; a spec without one produces exactly the gates it always did.
+
+## Coverage
+
+RTP and win rate say nothing about *which* symbols can actually win. A configuration can hit both targets exactly while most of its paytable is unreachable — so coverage is tracked separately, and exactly.
+
+Four nested tiers, each strictly narrower than the last:
+
+| tier | meaning |
+| --- | --- |
+| `raw` | the pattern's cells all show the symbol. Geometry only; payout ignored |
+| `winning` | a raw match whose payout is strictly positive |
+| `max_eligible` | under `combine="max"`, one of the argmax winning matches (**ties inclusive**) |
+| `unique_credit` | the *sole* argmax winning match |
+
+`raw >= winning >= max_eligible >= unique_credit` pointwise, always — asserted on every report.
+
+Two analyzers compute these: `coverage_naive.py` expands the board and compares cells; `coverage_engine.py` aggregates per-column signature histograms. Their match-and-attribution loops are written independently and must agree exactly — `cross_check_coverage()` **raises** on disagreement rather than returning a failed gate, because that would be a program bug, not a verdict on the artifact. Raw counts are additionally checked against a product-of-cyclic-masks factorization, a third and much cheaper witness.
+
+The payout evaluators still return one scalar per spin and were **not** taught attribution; coverage is computed alongside them, never inside them.
+
+**Monte Carlo has no vote here.** A simulation cannot distinguish "impossible" from "merely rare", so it must never decide a coverage question — enforced by AST tests, alongside tests forbidding `isclose`/`float()` anywhere in these modules. Probabilities are exact `Fraction`s.
+
+```bash
+uv run slotmath coverage configs/homework-3x3.json solutions/homework-3x3.json
+uv run slotmath coverage configs/homework-3x3.json solutions/homework-3x3.json --json
+uv run slotmath coverage configs/homework-3x3.json solutions/homework-3x3.json --require raw
+```
+
+Applied to the two shipped solutions, this makes a real trade-off visible:
+
+| solution | reels | RTP | win rate | every reel holds every symbol | pairs raw-covered | symbols that can win |
+| --- | --- | --- | --- | --- | --- | --- |
+| `homework-3x3.json` | (3, 8, 15) | 19/20 | 17/30 | no | 4 / 25 | 2, 3 |
+| `homework-3x3-per-reel-coverage.json` | (10, 16, 15) | 19/20 | 37/60 | yes | 5 / 25 | 2 |
+
+Putting every symbol on every reel does not make every symbol *win* — under this paytable it costs the second winning symbol.
+
+## Feasibility: proven impossible vs. not found
+
+`solve()` returning nothing conflates two unrelated facts. `solve_with_status()` keeps them apart:
+
+| status | means |
+| --- | --- |
+| `PROVEN_FEASIBLE` | a configuration was found |
+| `PROVEN_INFEASIBLE` | none exists, by an argument holding at **every** length |
+| `BOUNDED_EXHAUSTED` | every configuration **within the configured length bounds** was enumerated exactly; none works |
+| `HEURISTIC_EXHAUSTED` | the search ran out of budget. Says nothing about existence |
+| `UNKNOWN` | no check applied |
+
+```bash
+uv run slotmath feasibility configs/homework-3x3-per-reel-coverage.json
+```
+
+Worked example: demanding `raw` coverage for *every* `(symbol, pattern)` pair on the homework paytable. `FULL` spans all three rows of every column, so a symbol only completes it with a cyclic run of 3, and five symbols each needing one puts the floor at 15 positions per reel. With `max_len=16` only lengths 15 and 16 survive, and the strip space collapses to something enumerable exactly: 1512 coverage-satisfying strips, 343 realizable histogram combinations, **not one reaching exact RTP**. Reported as `bounded_exhausted` — "proven infeasible under reel length bounds 3..16", never "mathematically impossible". Raising `--max-len` re-opens the question.
+
 A **PostToolUse hook** (`scripts/hooks/verify_on_write.py`) runs this same verification automatically whenever a file under `configs/` or `solutions/` is written, so a bad artifact is reported back immediately instead of discovered later.
 
 ## Repository layout
@@ -123,16 +183,20 @@ A **PostToolUse hook** (`scripts/hooks/verify_on_write.py`) runs this same verif
 ```text
 slot-reel-rtp/
 ├── configs/
-│   └── homework-3x3.json          # GameSpec: 3x3 grid, 5 patterns, RTP 0.95 target
+│   ├── homework-3x3.json          # GameSpec: 3x3 grid, 5 patterns, RTP 0.95 target
+│   └── homework-3x3-per-reel-coverage.json   # same, + every reel holds every symbol
 ├── solutions/
 │   ├── homework-3x3.json          # accepted ReelConfig deliverable
+│   ├── homework-3x3-per-reel-coverage.json   # solution under that constraint
 │   └── portfolio.json             # diversity-filtered explore() output
 ├── scripts/hooks/
 │   └── verify_on_write.py         # PostToolUse hook: verify on every write
 ├── src/slotmath/
 │   ├── models/                    # spec.py, metrics.py
-│   ├── evaluation/                # windows.py, naive.py, engine.py, montecarlo.py
-│   ├── solving/                   # diophantine.py, solver.py, portfolio.py
+│   ├── evaluation/                # windows.py, naive.py, engine.py, montecarlo.py,
+│   │                              # coverage.py, coverage_naive.py, coverage_engine.py
+│   ├── solving/                   # diophantine.py, solver.py, portfolio.py,
+│   │                              # feasibility.py
 │   ├── verification/              # verify.py
 │   ├── reporting/                 # render.py
 │   └── cli/                       # app.py (+ __init__.py exposing main)
@@ -172,11 +236,18 @@ uv run slotmath verify solutions/homework-3x3.json
 uv run slotmath report solutions/homework-3x3.json
 ```
 
-A fifth command, `slotmath explore`, runs `solve` repeatedly and keeps a diverse *portfolio* of solutions (rejecting near-duplicates by a calibrated distance threshold over win rate, volatility, max win, payout entropy, and spin count):
+`slotmath explore` runs `solve` repeatedly and keeps a diverse *portfolio* of solutions (rejecting near-duplicates by a calibrated distance threshold over win rate, volatility, max win, payout entropy, and spin count):
 
 ```bash
 uv run slotmath explore configs/homework-3x3.json --seed 500 --rounds 6 \
   --portfolio solutions/portfolio.json
+```
+
+`slotmath coverage` and `slotmath feasibility` answer the two questions RTP and win rate cannot — which `(symbol, pattern)` pairs are actually reachable, and whether a failed solve was proven impossible or merely unfound. Both are covered in their own sections above.
+
+```bash
+uv run slotmath coverage configs/homework-3x3.json solutions/homework-3x3.json
+uv run slotmath feasibility configs/homework-3x3-per-reel-coverage.json
 ```
 
 ### Exit codes
@@ -205,6 +276,22 @@ Exit codes are a contract across every command, because the PostToolUse hook dep
 
 This is entry 0 of `solutions/portfolio.json` (produced by `slotmath explore configs/homework-3x3.json --seed 500`) and is independently reproduced byte-for-byte by `slotmath solve configs/homework-3x3.json --seed 500` — the `solver.command` recorded in the artifact is that literal, runnable command.
 
+### Second deliverable: per-reel symbol coverage
+
+`solutions/homework-3x3-per-reel-coverage.json` solves the stricter `configs/homework-3x3-per-reel-coverage.json`, which adds `"coverage": {"each_reel_all_symbols": true}` — every reel must carry every declared symbol, not merely the union across reels:
+
+| | |
+|---|---|
+| Reels | `[1,2,2,2,2,2,2,0,3,4]`, `[2,2,2,2,2,2,0,3,4,1,2,2,2,2,2,2]`, `[2,2,2,2,2,2,0,2,2,1,2,4,2,3,2]` |
+| RTP | exactly `19/20` (0.95) |
+| Win rate | exactly `37/60` (≈0.6167) |
+| Spin count | 2400 (`10 x 16 x 15`) |
+| Every reel holds all five symbols | yes |
+
+Reproduced by `slotmath solve configs/homework-3x3-per-reel-coverage.json --seed 500`. The shape that works is one cheap symbol filling most of the strip with the rest sitting in it as isolated single positions — and *which* symbol may dominate is forced, not chosen: since RTP = win rate x average payout per win, a minimum win rate of 11/20 caps the average win at 19/11 ≈ 34.5 payout units, which symbol 2 (20 units) clears and symbols 3 (60) and 4 (100) do not.
+
+The original deliverable above is unchanged and still passes: its spec has no `coverage` block, so the stricter constraint is opt-in rather than retroactive.
+
 An earlier version of this file held a *degenerate* configuration — two symbols, win rate exactly 1 — that met the RTP and win-rate targets only by making it impossible for the player to lose. It was legal under the letter of the spec but not a real answer, and was replaced with the configuration above.
 
 ## Tests and verification
@@ -213,7 +300,7 @@ An earlier version of this file held a *degenerate* configuration — two symbol
 uv run pytest -v
 ```
 
-runs the full suite (193 tests as of this writing): one test module per `src/slotmath/*/*.py`, plus `tests/test_hook.py` (including a subprocess test that runs the literal command configured in `.claude/settings.json`, not just an in-process call) and `tests/test_skills.py`.
+runs the full suite (255 tests as of this writing): one test module per `src/slotmath/*/*.py`, plus `tests/test_hook.py` (including a subprocess test that runs the literal command configured in `.claude/settings.json`, not just an in-process call) and `tests/test_skills.py`.
 
 To independently verify the accepted deliverable yourself:
 
@@ -221,7 +308,7 @@ To independently verify the accepted deliverable yourself:
 uv run slotmath verify solutions/homework-3x3.json
 ```
 
-should print nine gates, all `PASS` (one — `win_rate_not_degenerate` — is a warning-severity gate that also happens to pass here, since this configuration's win rate is below 1), and exit 0. Widen the Monte Carlo layer for a more thorough independent check:
+should print nine gates, all `PASS` (one — `win_rate_not_degenerate` — is a warning-severity gate that also happens to pass here, since this configuration's win rate is below 1), and exit 0. `solutions/homework-3x3-per-reel-coverage.json` prints ten, the extra one being `per_reel_symbol_coverage` from its spec's `coverage` block. Widen the Monte Carlo layer for a more thorough independent check:
 
 ```bash
 uv run slotmath verify solutions/homework-3x3.json --mc-spins 20000000

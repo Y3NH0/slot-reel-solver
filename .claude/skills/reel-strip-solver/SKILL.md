@@ -79,29 +79,51 @@ ever loses, whether one payout dominates, and whether `max_win` is sane.
   explicitly, rejecting any candidate whose reels don't cover the full
   symbol set. `slotmath verify`'s `all_symbols_used` gate catches it too, in
   case a config was produced or edited some other way.
+- **Per-reel symbol coverage IS achievable, and is supported.** Set
+  `"coverage": {"each_reel_all_symbols": true}` in the spec; the solver then
+  guarantees the bound during generation and `slotmath verify` adds a
+  `per_reel_symbol_coverage` gate naming any reel/symbol that is missing.
+  `configs/homework-3x3-per-reel-coverage.json` plus
+  `solutions/homework-3x3-per-reel-coverage.json` are a worked example
+  (RTP exactly 19/20, win rate 37/60, every reel carrying all five symbols).
+  An earlier note here claimed this was in structural tension with the
+  targets; that was wrong, and it was wrong in the specific way this file
+  warns about everywhere else -- a stochastic search came back empty and the
+  emptiness got written up as a property of the problem. The shape that works
+  is one cheap symbol filling most of the strip with the rest sitting in it as
+  isolated single positions.
+- **Which symbol dominates a reel is forced, not a matter of taste.** RTP =
+  win_rate x average payout per win, so requiring win_rate >= min_win_rate
+  caps the average win at RTP / min_win_rate. For the homework paytable that
+  is 19/11, i.e. 34.5 payout units: symbol 2 (20 units) can dominate a reel,
+  symbols 3 (60) and 4 (100) cannot -- fill a reel with either and the win
+  rate tops out near 0.32 and 0.19 respectively however long you search.
+  `diophantine.affordable_core_symbols()` derives this from the spec.
 - **Do not chase "every symbol wins via multiple patterns" as a hard
-  requirement without re-reading this note first.** It was investigated in
-  depth for the homework paytable and found to be in genuine structural
-  tension with the RTP/win-rate targets, not merely hard to search for.
-  Guaranteeing a symbol a run long enough to complete more than one pattern
-  (run >= 2 for two row-pairs, run >= 3 to add FULL) necessarily makes that
-  symbol's payout reachable far more often; doing this for every symbol --
-  including the high-multiplier ones -- pushes the average payout per win
-  up, which for a *fixed* RTP forces win_rate down (RTP ~= win_rate x
-  average payout per win). Concretely: a construction giving every symbol a
-  run of 3 in every reel was confirmed to hit RTP=19/20 exactly with every
-  symbol winning all 5 patterns, but its win_rate was ~0.30 -- well under
-  the homework's 0.55 minimum. Every later attempt (weaker run>=2, coverage
-  confined to only the two fixed reels so the last reel stays free,
-  biasing cheap symbols to a larger footprint and expensive ones to the
-  bare minimum) either reproduced the same low win_rate or broke the
-  Diophantine construction's existence routes outright (see the module
-  docstring: a coverage-guaranteed last reel uses every one of a column's
-  16 possible signatures, turning the normal 1-2-term existence proof into
-  a much harder ~16-term integer equation). None of this rules out a
-  solution existing -- it rules out finding one by sampling. A real attempt
-  would need an actual integer program over the signature counts, not
-  another random or biased composition function.
+  requirement without re-reading this note first.** For the homework paytable
+  this is now settled by exhaustive enumeration rather than by sampling: run
+  `slotmath feasibility` on a spec with
+  `"symbol_pattern": "raw"` and it reports `bounded_exhausted` over lengths
+  15..16 (1512 strips, 343 histogram combinations, not one reaching exact
+  RTP). Say "proven infeasible under reel length bounds 3..16", never
+  "mathematically impossible" -- the bound is a configuration choice and
+  longer reels are simply not covered by the enumeration.
+  Why the geometry forces it: FULL spans all three rows of every column, so a
+  symbol only completes it with a cyclic run of 3, and every symbol needing
+  one on every reel puts the floor at 3 x 5 = 15 positions. With max_len=16
+  just two lengths survive, and the strip space collapses to something small
+  enough to settle exactly -- five blocks of three, plus at most one spare
+  position. `solving/feasibility.py` enumerates it and finds no configuration
+  reaching exact RTP at all, so the win-rate target never even comes into
+  play. Raising max_len re-opens the question; the enumeration says nothing
+  about longer reels, and the strip count grows fast once the slack does.
+
+  An earlier revision of this note reported that such a construction had been
+  found hitting RTP=19/20 with win_rate ~0.30. The enumeration contradicts
+  that, and the enumeration is the thing that is checked -- treat the old
+  figure as unverified and gone. Sampling-based claims about this paytable
+  have been wrong more than once; prefer `slotmath feasibility` over
+  recollection.
 
 ## Output Contract
 

@@ -1,0 +1,91 @@
+{
+  "spec": "configs/homework-3x3.json",
+  "reels": [
+    [
+      0,
+      4,
+      1,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      3,
+      4
+    ],
+    [
+      0,
+      1,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      3,
+      4
+    ],
+    [
+      0,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      1,
+      2,
+      2,
+      3,
+      4
+    ]
+  ],
+  "metrics": {
+    "spin_count": 2160,
+    "win_count": 1332,
+    "win_rate": 0.6166666666666667,
+    "total_payout_units": 41040,
+    "payout_unit_denominator": 20,
+    "rtp": 0.95,
+    "volatility": 1.3092618785661891,
+    "max_win": 5.0,
+    "payout_distribution": [
+      {
+        "payout_units": 0,
+        "payout": 0.0,
+        "combo_count": 828
+      },
+      {
+        "payout_units": 20,
+        "payout": 1.0,
+        "combo_count": 1152
+      },
+      {
+        "payout_units": 100,
+        "payout": 5.0,
+        "combo_count": 180
+      }
+    ]
+  },
+  "solver": {
+    "version": "research-review-2026-08-02",
+    "method": "bounded search over realizable cyclic signature histograms",
+    "verification": {
+      "naive_equals_engine": true,
+      "exact_rtp": "19/20",
+      "exact_win_rate": "37/60",
+      "monte_carlo": {
+        "spins": 200000,
+        "seed": 20260731,
+        "sigma_deviation": -1.68
+      }
+    }
+  }
+}
