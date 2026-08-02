@@ -129,3 +129,117 @@ def test_report_refuses_an_oversized_artifact_instead_of_grinding(tmp_path, caps
     err = capsys.readouterr().err
     assert "over the safety budget" in err
     assert "Traceback" not in err
+
+
+# --------------------------------------------------------------------------
+# coverage and feasibility subcommands
+# --------------------------------------------------------------------------
+
+
+def test_coverage_command_prints_exact_counts(capsys):
+    code = main(
+        [
+            "coverage",
+            "configs/homework-3x3.json",
+            "solutions/homework-3x3-per-reel-coverage.json",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "spin_count: 2400" in out
+    assert "raw: 5/25 pairs covered" in out
+
+
+def test_coverage_command_emits_json_with_fraction_probabilities(capsys):
+    import json as _json
+
+    code = main(
+        [
+            "coverage",
+            "configs/homework-3x3.json",
+            "solutions/homework-3x3-per-reel-coverage.json",
+            "--json",
+        ]
+    )
+    assert code == 0
+    payload = _json.loads(capsys.readouterr().out)
+    assert payload["spin_count"] == 2400
+    entry = next(
+        e for e in payload["entries"] if e["symbol"] == 2 and e["pattern"] == "FULL"
+    )
+    # probabilities are exact rationals rendered as strings, never floats
+    assert "/" in entry["raw_probability"] or entry["raw_probability"] == "0"
+
+
+def test_coverage_command_exits_1_when_a_required_tier_is_unmet(capsys):
+    code = main(
+        [
+            "coverage",
+            "configs/homework-3x3.json",
+            "solutions/homework-3x3-per-reel-coverage.json",
+            "--require",
+            "raw",
+        ]
+    )
+    assert code == 1
+
+
+def test_feasibility_reports_a_bounded_proof_not_an_impossibility(tmp_path, capsys):
+    import json as _json
+    from pathlib import Path as _Path
+
+    raw = _json.loads(
+        _Path("configs/homework-3x3.json").read_text(encoding="utf-8")
+    )
+    raw["coverage"] = {"each_reel_all_symbols": True, "symbol_pattern": "raw"}
+    spec_path = tmp_path / "ideal.json"
+    spec_path.write_text(_json.dumps(raw), encoding="utf-8")
+
+    code = main(["feasibility", str(spec_path)])
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "bounded_exhausted" in out
+    assert "under reel length bounds" in out
+    assert "mathematically impossible" not in out
+
+
+def test_solve_failure_explains_which_kind_of_failure_it_was(tmp_path, capsys):
+    code = main(
+        [
+            "solve",
+            "configs/homework-3x3.json",
+            "--max-seeds",
+            "1",
+            "--max-candidates",
+            "1",
+            "--seed",
+            "3",
+        ]
+    )
+    err = capsys.readouterr().err
+    assert code == 1
+    assert "heuristic_exhausted" in err
+    assert "not about existence" in err
+
+
+def test_explore_runs_a_real_solve_round(tmp_path, capsys):
+    """Regression: explore has its own solver call site, and a change to the
+    one in `solve` once left this path referencing a name it no longer
+    imported. Only an end-to-end round catches that."""
+    portfolio = tmp_path / "portfolio.json"
+    code = main(
+        [
+            "explore",
+            "configs/homework-3x3.json",
+            "--seed",
+            "1",
+            "--rounds",
+            "1",
+            "--portfolio",
+            str(portfolio),
+        ]
+    )
+    out = capsys.readouterr().out
+    assert code == 0, out
+    assert portfolio.exists()
+    assert "round 0" in out

@@ -21,6 +21,7 @@ from slotmath.models.metrics import build_metrics, check_board_budget
 from slotmath.models.spec import GameSpec, load_spec
 from slotmath.reporting.render import (
     render_calibration,
+    render_coverage_report,
     render_payout_table,
     render_spec_summary,
 )
@@ -114,8 +115,45 @@ def _cmd_report(args, out, err) -> int:
     return 0
 
 
-def _cmd_solve(args, out, err) -> int:
-    from slotmath.solving.solver import SolverOptions, solve
+def _cmd_coverage(args, out, err) -> int:
+    from slotmath.evaluation.coverage import cross_check_coverage
+
+    spec_data = _load_json(Path(args.spec), err)
+    try:
+        spec = GameSpec.model_validate(spec_data)
+    except ValidationError as exc:
+        print(f"{args.spec}: invalid GameSpec\n{exc}", file=err)
+        return 2
+
+    data = _load_json(Path(args.solution), err)
+    reels = data.get("reels")
+    if not isinstance(reels, list):
+        print(f"{args.solution}: no reels array", file=err)
+        return 2
+
+    try:
+        check_board_budget(reels)
+        report = cross_check_coverage(spec, reels)
+    except ValueError as exc:
+        print(f"{args.solution}: cannot analyse reels: {exc}", file=err)
+        return 2
+
+    if args.json:
+        print(json.dumps(report.to_dict(), indent=2), file=out)
+    else:
+        print(render_coverage_report(report, spec), file=out)
+    tier = args.require or spec.coverage.symbol_pattern
+    if tier != "none" and not report.fully_covers(tier):
+        return 1
+    return 0
+
+
+def _cmd_feasibility(args, out, err) -> int:
+    from slotmath.solving.feasibility import (
+        SolveStatus,
+        precheck,
+        prove_bounded_coverage_infeasible,
+    )
 
     data = _load_json(Path(args.path), err)
     try:
@@ -124,7 +162,48 @@ def _cmd_solve(args, out, err) -> int:
         print(f"{args.path}: invalid GameSpec\n{exc}", file=err)
         return 2
 
-    config = solve(
+    low = max(args.min_len, spec.grid.rows)
+    finding = precheck(spec, low, args.max_len)
+    print(f"precheck: {finding.status.value}", file=out)
+    for diagnostic in finding.diagnostics:
+        print(f"  {diagnostic}", file=out)
+
+    if spec.coverage.symbol_pattern == "none":
+        print(
+            "no symbol_pattern coverage constraint: bounded enumeration not "
+            "applicable",
+            file=out,
+        )
+        return 0 if not finding.proved() else 1
+
+    result = prove_bounded_coverage_infeasible(spec, low, args.max_len)
+    print(f"bounded enumeration: {result.status.value}", file=out)
+    print(f"  lengths considered: {list(result.lengths_considered)}", file=out)
+    print(f"  strips enumerated: {result.strips_enumerated}", file=out)
+    print(f"  histogram combinations: {result.histogram_combinations}", file=out)
+    if result.best_win_rate_at_exact_rtp is not None:
+        print(
+            f"  best win rate at exact RTP: "
+            f"{result.best_win_rate_at_exact_rtp}",
+            file=out,
+        )
+    print(f"  {result.detail}", file=out)
+    if result.witness:
+        print(f"  witness: {[list(w) for w in result.witness]}", file=out)
+    return 0 if result.status is SolveStatus.PROVEN_FEASIBLE else 1
+
+
+def _cmd_solve(args, out, err) -> int:
+    from slotmath.solving.solver import SolverOptions, solve_with_status
+
+    data = _load_json(Path(args.path), err)
+    try:
+        spec = GameSpec.model_validate(data)
+    except ValidationError as exc:
+        print(f"{args.path}: invalid GameSpec\n{exc}", file=err)
+        return 2
+
+    outcome = solve_with_status(
         spec,
         SolverOptions(
             seed=args.seed,
@@ -135,8 +214,13 @@ def _cmd_solve(args, out, err) -> int:
             spec_path=args.path,
         ),
     )
+    config = outcome.config
     if config is None:
-        print("no configuration found within the search budget", file=err)
+        # Never collapse these into one message: "no solution exists" and "the
+        # budget ran out" call for completely different next steps.
+        print(f"no configuration returned ({outcome.status.value})", file=err)
+        for diagnostic in outcome.diagnostics:
+            print(f"  {diagnostic}", file=err)
         return 1
 
     payload = json.loads(config.model_dump_json())
@@ -156,7 +240,7 @@ def _cmd_explore(args, out, err) -> int:
         recalibrate,
         should_admit,
     )
-    from slotmath.solving.solver import SolverOptions, solve
+    from slotmath.solving.solver import SolverOptions, solve_with_status
 
     data = _load_json(Path(args.path), err)
     try:
@@ -189,11 +273,15 @@ def _cmd_explore(args, out, err) -> int:
 
     admitted = 0
     for round_index in range(args.rounds):
-        config = solve(
+        outcome = solve_with_status(
             spec, SolverOptions(seed=args.seed + round_index, spec_path=args.path)
         )
+        config = outcome.config
         if config is None:
-            print(f"round {round_index}: no config found", file=out)
+            print(
+                f"round {round_index}: no config found ({outcome.status.value})",
+                file=out,
+            )
             continue
 
         if portfolio.calibration is None:
@@ -263,6 +351,32 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--max-candidates", type=int, default=40_000)
     p.add_argument("--out", default=None)
     p.set_defaults(func=_cmd_solve)
+
+    p = sub.add_parser(
+        "coverage", help="exact symbol x pattern coverage report for a solution"
+    )
+    p.add_argument("spec")
+    p.add_argument("solution")
+    p.add_argument("--json", action="store_true", help="emit the full report as JSON")
+    p.add_argument(
+        "--require",
+        choices=["none", "raw", "winning", "max_eligible", "unique_credit"],
+        default=None,
+        help=(
+            "exit 1 unless every (symbol, pattern) pair reaches this tier "
+            "(default: whatever the spec's coverage block asks for)"
+        ),
+    )
+    p.set_defaults(func=_cmd_coverage)
+
+    p = sub.add_parser(
+        "feasibility",
+        help="report whether the targets are provably unreachable, or merely unfound",
+    )
+    p.add_argument("path")
+    p.add_argument("--min-len", type=int, default=3)
+    p.add_argument("--max-len", type=int, default=16)
+    p.set_defaults(func=_cmd_feasibility)
 
     p = sub.add_parser("explore", help="collect diverse valid configs")
     p.add_argument("path")

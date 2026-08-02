@@ -62,3 +62,48 @@ def render_calibration(
         f"{label} from {entry_count} entries: distance={calibration['distance']:.4g}; "
         f"ranges: {ranges_str}"
     )
+
+
+def render_coverage_report(report, spec) -> str:
+    """Exact symbol x pattern coverage as a table.
+
+    Counts and Fraction probabilities only. The float column is a reading aid
+    beside the exact value it is derived from, never a substitute for it.
+    """
+    from slotmath.evaluation.coverage import COVERAGE_KINDS
+
+    lines = [
+        f"spin_count: {report.spin_count}   combine: {report.combine}",
+        "",
+        f"{'symbol':>6} {'pattern':<6} {'units':>6} "
+        + " ".join(f"{k:>14}" for k in COVERAGE_KINDS),
+    ]
+    for entry in report.entries:
+        counts = " ".join(f"{entry.count(k):>14}" for k in COVERAGE_KINDS)
+        lines.append(
+            f"{entry.symbol:>6} {entry.pattern:<6} {entry.payout_units:>6} {counts}"
+        )
+
+    for kind in COVERAGE_KINDS:
+        missing = report.uncovered(kind)
+        covered = len(report.entries) - len(missing)
+        lines.append("")
+        lines.append(f"{kind}: {covered}/{len(report.entries)} pairs covered")
+        for entry in missing:
+            why = entry.reasons[0].describe() if entry.reasons else "no reason recorded"
+            lines.append(f"  symbol {entry.symbol} x {entry.pattern}: {why}")
+        if len(missing) > 0 and kind != COVERAGE_KINDS[-1]:
+            # Only the first tier's reasons are informative; later tiers repeat
+            # them as consequences. Show the first, summarise the rest.
+            break
+
+    probabilities = [
+        f"  symbol {e.symbol} x {e.pattern}: raw p = {e.probability('raw')}"
+        for e in report.entries
+        if e.covers("raw")
+    ]
+    if probabilities:
+        lines.append("")
+        lines.append("exact raw probabilities (covered pairs):")
+        lines.extend(probabilities)
+    return "\n".join(lines)
