@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# Read-only: this workflow builds nothing and publishes nothing.
+permissions:
+  contents: read
+
+# A newer push to the same branch makes the in-flight run redundant.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      # Pinned to a full version rather than a bare major tag: setup-uv stopped
+      # publishing `@v8`-style tags from v8.0.0 onwards, deliberately, so that a
+      # compromised tag cannot be silently repointed at new code. `@v9` does not
+      # resolve. Bump this deliberately, or swap it for the commit SHA.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: uv.lock
+
+      - name: Install Python
+        run: uv python install 3.11
+
+      # --locked fails rather than silently re-resolving if uv.lock has drifted
+      # from pyproject.toml, so CI tests the dependency set the lockfile claims.
+      - name: Install dependencies
+        run: uv sync --locked --dev
+
+      - name: Run tests
+        run: uv run pytest -q
+
+      # The solver search is deliberately NOT re-run here. CI's job is to prove
+      # the committed artifacts are correct, which is an exact recomputation;
+      # re-searching would instead test a stochastic process against a wall
+      # clock. `verify` recomputes each solution from its spec through both
+      # exact evaluators plus a fixed-seed Monte Carlo, and exits non-zero on
+      # any failed gate.
+      - name: Verify primary homework solution
+        run: uv run slotmath verify solutions/homework-3x3.json
+
+      - name: Verify per-reel coverage solution
+        run: uv run slotmath verify solutions/homework-3x3-per-reel-coverage.json
