@@ -1,0 +1,84 @@
+{
+  "spec": "configs/homework-3x3-per-reel-coverage.json",
+  "reels": [
+    [
+      1,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      0,
+      3,
+      4
+    ],
+    [
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      0,
+      3,
+      4,
+      1,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2
+    ],
+    [
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      0,
+      2,
+      2,
+      1,
+      2,
+      4,
+      2,
+      3,
+      2
+    ]
+  ],
+  "metrics": {
+    "spin_count": 2400,
+    "win_count": 1480,
+    "win_rate": 0.6166666666666667,
+    "total_payout_units": 45600,
+    "payout_unit_denominator": 20,
+    "rtp": 0.95,
+    "volatility": 1.3092618785661891,
+    "max_win": 5.0,
+    "payout_distribution": [
+      {
+        "payout_units": 0,
+        "payout": 0.0,
+        "combo_count": 920
+      },
+      {
+        "payout_units": 20,
+        "payout": 1.0,
+        "combo_count": 1280
+      },
+      {
+        "payout_units": 100,
+        "payout": 5.0,
+        "combo_count": 200
+      }
+    ]
+  },
+  "solver": {
+    "version": "0.1.0",
+    "seed": 500,
+    "command": "slotmath solve configs/homework-3x3-per-reel-coverage.json --seed 500"
+  }
+}

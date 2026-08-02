@@ -21,6 +21,10 @@ from typing import Literal
 from pydantic import BaseModel
 
 from slotmath.evaluation import engine, montecarlo, naive
+from slotmath.evaluation.coverage import (
+    cross_check_coverage,
+    missing_symbols_per_reel,
+)
 from slotmath.evaluation.engine import SignatureBudgetExceeded
 from slotmath.models.metrics import (
     BoardTooLargeError,
@@ -112,6 +116,25 @@ def verify(
         "every declared symbol appears in at least one reel" if not missing
         else f"declared symbols never appear in any reel: {missing}",
     )
+
+    # ---- optional: every reel carries every symbol -------------------------
+    # Strictly stronger than all_symbols_used above, and only checked when the
+    # spec asks for it, so specs written before this constraint existed are
+    # unaffected. Named per reel and per symbol: "coverage failed" tells an
+    # author nothing about which strip to edit.
+    if spec.coverage.each_reel_all_symbols:
+        per_reel = missing_symbols_per_reel(spec, config.reels)
+        faults = [
+            f"reel {index} is missing declared symbol {symbol}"
+            for index, absent in enumerate(per_reel)
+            for symbol in absent
+        ]
+        add(
+            "per_reel_symbol_coverage",
+            not faults,
+            "every reel contains every declared symbol" if not faults
+            else "; ".join(faults),
+        )
 
     # ---- Layer 1: file internal consistency -------------------------------
     m = config.metrics
@@ -260,6 +283,29 @@ def verify(
         f"win_rate {actual_win_rate} >= {spec.targets.min_win_rate}" if meets
         else f"win_rate {actual_win_rate} is below {spec.targets.min_win_rate}",
     )
+
+    # ---- optional: symbol x pattern coverage -------------------------------
+    # Exact and structural: computed by two independent analyzers that must
+    # agree, never by the Monte Carlo below. A simulation cannot distinguish
+    # "this pair is impossible" from "this pair is rare", so it has no vote
+    # here. cross_check_coverage raises on analyzer disagreement rather than
+    # returning a failed gate -- that would be a program bug, not a verdict
+    # on the artifact, and the two must never be confused.
+    if spec.coverage.symbol_pattern != "none":
+        kind = spec.coverage.symbol_pattern
+        coverage_report = cross_check_coverage(spec, config.reels)
+        uncovered = coverage_report.uncovered(kind)
+        detail = (
+            f"every (symbol, pattern) pair reaches {kind} coverage"
+            if not uncovered
+            else "; ".join(
+                f"symbol {e.symbol} never reaches {kind} coverage under "
+                f"{e.pattern}"
+                + (f" ({e.reasons[0].describe()})" if e.reasons else "")
+                for e in uncovered
+            )
+        )
+        add("symbol_pattern_coverage", not uncovered, detail)
 
     # ---- Layer 3: independent Monte Carlo ---------------------------------
     sim = montecarlo.simulate(spec, config.reels, spins=mc_spins, seed=mc_seed)

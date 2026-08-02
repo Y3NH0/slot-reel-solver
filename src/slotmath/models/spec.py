@@ -52,6 +52,33 @@ class Pattern(BaseModel):
     pattern_multiplier: Rational = Fraction(1)
 
 
+class CoverageConstraints(BaseModel):
+    """Optional structural requirements on top of the RTP/win-rate targets.
+
+    Absent from a spec, every field keeps its default and nothing changes --
+    specs written before this existed behave exactly as they did.
+
+    `each_reel_all_symbols` demands that every reel individually contain every
+    declared symbol, which is strictly stronger than verify.py's baseline
+    `all_symbols_used` gate (that one only asks for the union across reels).
+
+    `symbol_pattern` names which coverage tier every (symbol, pattern) pair
+    must reach; see slotmath.evaluation.coverage for what the tiers mean.
+    "none" disables the requirement. These are independent knobs: symbol
+    presence on a reel does not imply the symbol can complete any pattern
+    there, and a symbol can be pattern-coverable while absent from some reel
+    the pattern never touches.
+    """
+
+    each_reel_all_symbols: bool = False
+    symbol_pattern: Literal[
+        "none", "raw", "winning", "max_eligible", "unique_credit"
+    ] = "none"
+
+    def is_active(self) -> bool:
+        return self.each_reel_all_symbols or self.symbol_pattern != "none"
+
+
 class Targets(BaseModel):
     rtp: Rational
     min_win_rate: Rational = Fraction(0)
@@ -72,6 +99,7 @@ class GameSpec(BaseModel):
     patterns: list[Pattern] = Field(min_length=1)
     combine: Literal["max", "sum"] = "max"
     targets: Targets
+    coverage: CoverageConstraints = Field(default_factory=CoverageConstraints)
 
     @model_validator(mode="after")
     def _resolve_and_check(self):

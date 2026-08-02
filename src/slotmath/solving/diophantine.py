@@ -135,12 +135,127 @@ def has_mixed_signs(weights: dict[tuple[int | None, ...], int]) -> bool:
     return any(v > 0 for v in values) and any(v < 0 for v in values)
 
 
-def _run_composition(rng: random.Random, symbols: list[int], length: int) -> list[int]:
-    """Build a strip out of runs, which is what makes 2x2 blocks possible."""
-    strip: list[int] = []
-    while len(strip) < length:
-        strip.extend([rng.choice(symbols)] * rng.choice([1, 2, 2, 3, 3, 4]))
-    return strip[:length]
+def affordable_core_symbols(spec: GameSpec) -> list[int]:
+    """Symbols cheap enough to dominate a reel without breaking the win rate.
+
+    A spin either pays or it does not, so
+
+        RTP = win_rate * (average payout per winning spin)
+
+    which pins the average winning payout at exactly RTP / win_rate. Requiring
+    win_rate >= min_win_rate therefore caps the average win at
+    RTP / min_win_rate -- a hard consequence of the two targets, not a
+    heuristic. A symbol that fills most of a reel supplies most of the wins,
+    so its own payout has to sit under that cap or the win rate cannot reach
+    the target no matter how the rest of the strip is arranged.
+
+    Returns the symbols meeting the cap, cheapest last: among affordable
+    symbols the dearer ones reach the RTP target with fewer winning spins, so
+    they are the ones worth trying first. Falls back to every symbol when
+    min_win_rate is 0 (no cap exists) or when nothing clears the cap (in which
+    case the caller has a harder problem than core choice can fix).
+    """
+    symbols = sorted(spec.symbols)
+    if spec.targets.min_win_rate <= 0:
+        return symbols
+
+    denominator = spec.payout_unit_denominator()
+    cap = spec.targets.rtp / spec.targets.min_win_rate * denominator
+    cheapest_win = {
+        symbol: min(
+            (
+                spec.payout_units(symbol, pattern)
+                for pattern in spec.patterns
+                if spec.payout_units(symbol, pattern) > 0
+            ),
+            default=0,
+        )
+        for symbol in symbols
+    }
+    affordable = [s for s in symbols if cheapest_win[s] and cheapest_win[s] <= cap]
+    if not affordable:
+        return symbols
+    return sorted(affordable, key=lambda s: cheapest_win[s], reverse=True)
+
+
+def _run_composition(
+    rng: random.Random,
+    symbols: list[int],
+    length: int,
+    lower_bounds: dict[int, int] | None = None,
+    core_pool: Sequence[int] | None = None,
+) -> list[int]:
+    """Build a strip out of runs, which is what makes 2x2 blocks possible.
+
+    `lower_bounds` maps a symbol to the minimum number of positions it must
+    occupy. Those positions are laid down first and the remainder is filled
+    with the ordinary random runs, so a required symbol is guaranteed by
+    construction rather than by rejecting finished candidates. Rejection
+    sampling collapses here: the chance that five independently sampled runs
+    happen to cover five symbols is small, and it falls off fast as the symbol
+    count grows -- a coverage-constrained search that filters at the end
+    spends nearly all of its budget discarding work.
+
+    Raises ValueError if the bounds cannot fit in `length`; callers are
+    expected to have pruned such lengths already (see
+    coverage.minimum_reel_length).
+    """
+    required: list[int] = []
+    if lower_bounds:
+        for symbol, count in sorted(lower_bounds.items()):
+            required.extend([symbol] * count)
+    if len(required) > length:
+        raise ValueError(
+            f"lower bounds need {len(required)} positions but the strip is "
+            f"only {length} long"
+        )
+
+    # Under lower bounds the filler draws from a narrow randomly-chosen core
+    # rather than the whole alphabet. Spreading the filler evenly across every
+    # symbol is what an unconstrained search wants, but it is the wrong shape
+    # here: the required symbols already supply breadth, and a filler that
+    # adds more of it leaves every symbol with a short, broken-up footprint.
+    # That drives the last column into using all of its signatures at once,
+    # which is precisely the case where the linear form has neither a zero
+    # weight nor mixed signs and the pair admits no solution at all. A narrow
+    # core keeps long runs of one symbol -- the shape that leaves the
+    # Diophantine routes open -- and lets the required symbols sit in it as
+    # isolated singletons.
+    filler_pool = symbols
+    if required:
+        pool = list(core_pool) if core_pool else symbols
+        core_size = rng.randint(1, min(2, len(pool)))
+        # `core_pool` arrives best-first (see affordable_core_symbols), so
+        # sampling it uniformly would spend most attempts on its weakest
+        # entries. Weight by descending rank instead: still reachable, just
+        # proportionally rarer.
+        weights = [len(pool) - i for i in range(len(pool))]
+        filler_pool = []
+        while len(filler_pool) < core_size:
+            pick = rng.choices(pool, weights=weights, k=1)[0]
+            if pick not in filler_pool:
+                filler_pool.append(pick)
+
+    filler: list[int] = []
+    while len(filler) < length - len(required):
+        filler.extend([rng.choice(filler_pool)] * rng.choice([1, 2, 2, 3, 3, 4]))
+    filler = filler[: length - len(required)]
+
+    if not required:
+        return filler
+
+    # Scatter the required symbols instead of leaving them as one contiguous
+    # prefix, which would bias every candidate into the same shape. Scattered
+    # single occurrences are also the useful shape: an isolated symbol adds
+    # presence without creating the runs that drive payout up.
+    rng.shuffle(required)
+    slots = set(rng.sample(range(length), len(required)))
+    required_iter = iter(required)
+    filler_iter = iter(filler)
+    return [
+        next(required_iter) if i in slots else next(filler_iter)
+        for i in range(length)
+    ]
 
 
 def search_last_reel(
@@ -150,30 +265,56 @@ def search_last_reel(
     max_len: int,
     seed: int,
     max_candidates: int = 200_000,
+    lower_bounds: dict[int, int] | None = None,
+    core_pool: Sequence[int] | None = None,
 ) -> list[int] | None:
-    """Search realizable strips, scored exactly by the linear form."""
+    """Search realizable strips, scored exactly by the linear form.
+
+    `lower_bounds` forwards per-symbol minimum occupancy to the generator, so
+    a coverage-constrained search never spends its budget on strips that are
+    structurally disqualified.
+    """
     weights = signature_weights(spec, fixed_reels)
     symbols = sorted(spec.symbols)
     rows = spec.grid.rows
     rng = random.Random(seed)
 
     lo = max(min_len, rows)
+    if lower_bounds:
+        lo = max(lo, sum(lower_bounds.values()))
     if lo > max_len:
+        return None
+
+    # Neither existence route is present: every weight shares a sign and none
+    # is zero. Then sum_s n_s w_s = 0 with every n_s >= 0 and sum_s n_s = L > 0
+    # is impossible -- the sum inherits that sign and cannot vanish. No strip
+    # of any length solves this pair, so sampling one is pure waste. The
+    # module docstring has always said a caller must move on here; this makes
+    # the function do it rather than trusting each caller to remember.
+    if not has_mixed_signs(weights) and all(w != 0 for w in weights.values()):
         return None
 
     # Uniform strips first: cheap, and they produced golden fixtures A and B
     # (both solved via route 2, a zero weight -- see the module docstring).
     # Fixture C's last reel is not uniform ([4,3,2,2,1,3,2,2,2,2]); it is
     # solved via route 1 (mixed signs) further down, in the random search.
-    for length in range(lo, max_len + 1):
-        for symbol in symbols:
-            candidate = [symbol] * length
-            if score(spec, weights, candidate) == 0:
-                return candidate
+    #
+    # Skipped entirely under lower bounds: a uniform strip carries one symbol,
+    # so any bound naming a second one rules it out before it is scored. Left
+    # in place otherwise, because it is what finds A- and B-shaped solutions
+    # almost immediately.
+    if not lower_bounds:
+        for length in range(lo, max_len + 1):
+            for symbol in symbols:
+                candidate = [symbol] * length
+                if score(spec, weights, candidate) == 0:
+                    return candidate
 
     for _ in range(max_candidates):
         length = rng.randint(lo, max_len)
-        candidate = _run_composition(rng, symbols, length)
+        candidate = _run_composition(
+            rng, symbols, length, lower_bounds, core_pool
+        )
         if score(spec, weights, candidate) == 0:
             return candidate
     return None

@@ -18,14 +18,30 @@ import random
 from functools import reduce
 from itertools import product
 from math import gcd, prod
+from dataclasses import dataclass
 from typing import Iterable, Iterator
 
 from pydantic import BaseModel
 
 from slotmath.evaluation import engine
-from slotmath.solving.diophantine import _run_composition, search_last_reel
+from slotmath.evaluation.coverage import (
+    cross_check_coverage,
+    minimum_reel_length,
+    missing_symbols_per_reel,
+)
+from slotmath.solving.diophantine import (
+    _run_composition,
+    affordable_core_symbols,
+    search_last_reel,
+)
 from slotmath.models.metrics import build_metrics, exact_rtp, exact_win_rate
 from slotmath.models.spec import GameSpec
+from slotmath.solving.feasibility import (
+    Diagnostic,
+    SolveStatus,
+    precheck,
+    prove_bounded_coverage_infeasible,
+)
 from slotmath.verification.verify import ReelConfig
 
 VERSION = "0.1.0"
@@ -39,6 +55,16 @@ class SolverOptions(BaseModel):
     max_candidates: int = 40_000
     signature_budget: int = 5_000_000
     max_seeds: int = 400
+    # Attempts get multiplied by this when spec.coverage is active. Two
+    # measured effects pull the same way. Each attempt became far cheaper
+    # (search_last_reel rejects a fixed-reel pair with no existence route
+    # before sampling any strip, and most coverage-shaped pairs have none:
+    # ~400 attempts on the homework spec went from ~200s to ~9s). And each
+    # attempt is likelier to fail, because the constraint rules out the
+    # uniform strips that solve the unconstrained cases immediately. More
+    # attempts, each cheaper. Multiplied rather than floored so an explicit
+    # small max_seeds still means a small search.
+    coverage_attempt_multiplier: int = 100
     # The path the GameSpec was actually loaded from, so the returned
     # ReelConfig.spec and solver.command can reference it truthfully instead
     # of guessing configs/<spec.name>.json. None only when a caller
@@ -113,11 +139,27 @@ def derive_preferred_modulus(spec: GameSpec) -> int:
     return best
 
 
+def coverage_lower_bounds(spec: GameSpec) -> dict[int, int] | None:
+    """Per-symbol minimum occupancy implied by spec.coverage, or None.
+
+    Only `each_reel_all_symbols` produces a bound the generator can honour
+    directly (one position per symbol). A symbol_pattern requirement needs
+    specific *relative* positions, not a raw count, so it is enforced by the
+    exact post-check rather than smuggled in as a bigger number here.
+    """
+    if not spec.coverage.each_reel_all_symbols:
+        return None
+    return {symbol: 1 for symbol in sorted(spec.symbols)}
+
+
 def candidate_length_tuples(
-    spec: GameSpec, options: SolverOptions
+    spec: GameSpec, options: SolverOptions, rng: random.Random | None = None
 ) -> Iterator[tuple[int, ...]]:
     lo = max(options.min_len, spec.grid.rows)
     hi = options.max_len
+    # A reel too short to hold the constraint cannot be rescued by search, so
+    # those lengths never enter the stochastic loop at all.
+    lo = max(lo, max(minimum_reel_length(spec, c) for c in range(spec.grid.cols)))
     if lo > hi:
         return
     modulus = (
@@ -128,23 +170,118 @@ def candidate_length_tuples(
     every = list(product(range(lo, hi + 1), repeat=spec.grid.cols))
     preferred = [t for t in every if modulus > 1 and prod(t) % modulus == 0]
     seen = set(preferred)
+    rest = [t for t in every if t not in seen]
+
+    # Under a coverage constraint the order is sampled rather than walked in
+    # lexicographic order. The candidate space grows as (hi - lo + 1) ** cols
+    # while the attempt budget does not, so a lexicographic walk only ever
+    # reaches a prefix of it -- fine when short reels are as good as long
+    # ones, but they are not here. Every symbol must fit on every reel, so the
+    # shortest lengths are almost entirely consumed by the required symbols,
+    # leaving no room for the runs that patterns spanning several cells of a
+    # column need. Those tuples are legal, reachable first, and nearly always
+    # hopeless, so a lexicographic budget is spent before it arrives anywhere
+    # useful. Shuffling is still deterministic given the solver's seed.
+    #
+    # Only under a constraint: with none, the lexicographic order is what the
+    # existing seeds reproduce, and changing it would silently invalidate
+    # every recorded solve command.
+    if rng is not None and spec.coverage.is_active():
+        rng.shuffle(preferred)
+        rng.shuffle(rest)
+
     yield from preferred
-    yield from (t for t in every if t not in seen)
+    yield from rest
+
+
+@dataclass(frozen=True)
+class SolveOutcome:
+    """What the solver did, not merely what it returned.
+
+    `config is None` alone cannot distinguish "no such configuration exists"
+    from "the budget ran out", which is the single easiest way to turn a
+    search result into a false impossibility claim. `status` keeps them apart.
+    """
+
+    status: SolveStatus
+    config: ReelConfig | None = None
+    diagnostics: tuple[Diagnostic, ...] = ()
+    attempts: int = 0
+
+    def render(self) -> str:
+        lines = [f"status: {self.status.value}", f"attempts: {self.attempts}"]
+        lines.extend(f"  - {d}" for d in self.diagnostics)
+        return "\n".join(lines)
+
+
+def solve_with_status(spec: GameSpec, options: SolverOptions) -> SolveOutcome:
+    """solve(), plus why it ended the way it did."""
+    low = max(options.min_len, spec.grid.rows)
+    finding = precheck(spec, low, options.max_len)
+    if finding.proved():
+        return SolveOutcome(status=finding.status, diagnostics=finding.diagnostics)
+
+    # A symbol_pattern requirement often pins reels near their minimum length,
+    # which leaves few enough realizable strips to settle the question exactly
+    # instead of sampling it. Only decides when the enumeration completes
+    # within its caps; otherwise it returns UNKNOWN and the search runs as
+    # normal. Never consulted without such a constraint -- the unconstrained
+    # strip space is far too large to enumerate.
+    if spec.coverage.symbol_pattern != "none":
+        bounded = prove_bounded_coverage_infeasible(spec, low, options.max_len)
+        if bounded.status is SolveStatus.BOUNDED_EXHAUSTED:
+            return SolveOutcome(
+                status=SolveStatus.BOUNDED_EXHAUSTED,
+                diagnostics=(bounded.diagnostic(),),
+            )
+
+    config, attempts = _search(spec, options)
+    if config is not None:
+        return SolveOutcome(
+            status=SolveStatus.PROVEN_FEASIBLE, config=config, attempts=attempts
+        )
+
+    diagnostics = [
+        Diagnostic(
+            "heuristic_budget_exhausted",
+            f"the stochastic search made {attempts} attempts without finding a "
+            f"configuration. This is a statement about the budget, not about "
+            f"existence -- raise --max-seeds, or widen --max-len",
+        )
+    ]
+    return SolveOutcome(
+        status=SolveStatus.HEURISTIC_EXHAUSTED,
+        diagnostics=tuple(diagnostics),
+        attempts=attempts,
+    )
 
 
 def solve(spec: GameSpec, options: SolverOptions) -> ReelConfig | None:
+    """The configuration, or None. Use solve_with_status() to learn why."""
+    return solve_with_status(spec, options).config
+
+
+def _search(
+    spec: GameSpec, options: SolverOptions
+) -> tuple[ReelConfig | None, int]:
     rng = random.Random(options.seed)
     symbols = sorted(spec.symbols)
+    lower_bounds = coverage_lower_bounds(spec)
+    core_pool = affordable_core_symbols(spec) if lower_bounds else None
+    attempt_budget = options.max_seeds * (
+        options.coverage_attempt_multiplier if spec.coverage.is_active() else 1
+    )
     attempts = 0
 
-    for lengths in candidate_length_tuples(spec, options):
+    for lengths in candidate_length_tuples(spec, options, rng):
         for _ in range(4):
-            if attempts >= options.max_seeds:
-                return None
+            if attempts >= attempt_budget:
+                return None, attempts
             attempts += 1
 
             fixed = [
-                _run_composition(rng, symbols, n) for n in lengths[:-1]
+                _run_composition(rng, symbols, n, lower_bounds, core_pool)
+                for n in lengths[:-1]
             ]
             last = search_last_reel(
                 spec,
@@ -153,6 +290,8 @@ def solve(spec: GameSpec, options: SolverOptions) -> ReelConfig | None:
                 max_len=options.max_len,
                 seed=rng.randrange(2**31),
                 max_candidates=options.max_candidates,
+                lower_bounds=lower_bounds,
+                core_pool=core_pool,
             )
             if last is None:
                 continue
@@ -167,6 +306,14 @@ def solve(spec: GameSpec, options: SolverOptions) -> ReelConfig | None:
             # reasonable output. Checked before the (comparatively expensive)
             # engine.evaluate call so a doomed candidate is skipped cheaply.
             if {s for reel in reels for s in reel} != set(spec.symbols):
+                continue
+            # Generation guarantees the per-reel bounds, so this is an
+            # assertion of that guarantee rather than the mechanism enforcing
+            # it -- and it is the only thing standing behind the constraint if
+            # a future generator regresses. Cheap: no evaluation involved.
+            if spec.coverage.each_reel_all_symbols and any(
+                missing_symbols_per_reel(spec, reels)
+            ):
                 continue
             distribution = engine.evaluate(
                 spec, reels, budget=options.signature_budget
@@ -185,6 +332,14 @@ def solve(spec: GameSpec, options: SolverOptions) -> ReelConfig | None:
                 continue
             if exact_win_rate(metrics) < spec.targets.min_win_rate:
                 continue
+            # Exact post-check for the symbol_pattern tier. Left until last
+            # because it is the most expensive test here, and a candidate that
+            # misses RTP is already dead.
+            if spec.coverage.symbol_pattern != "none":
+                if not cross_check_coverage(spec, reels).fully_covers(
+                    spec.coverage.symbol_pattern
+                ):
+                    continue
 
             spec_path = options.spec_path or f"configs/{spec.name}.json"
             return ReelConfig(
@@ -196,5 +351,5 @@ def solve(spec: GameSpec, options: SolverOptions) -> ReelConfig | None:
                     "seed": options.seed,
                     "command": f"slotmath solve {spec_path} --seed {options.seed}",
                 },
-            )
-    return None
+            ), attempts
+    return None, attempts

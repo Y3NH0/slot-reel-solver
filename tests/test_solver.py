@@ -106,14 +106,15 @@ def test_solve_rejects_a_candidate_missing_declared_symbols(monkeypatch):
 
     calls = iter(b.reels[:-1])
     monkeypatch.setattr(
-        solver_mod, "_run_composition", lambda rng, symbols, length: next(calls)
+        solver_mod,
+        "_run_composition",
+        lambda rng, symbols, length, lower_bounds=None, core_pool=None: next(calls),
     )
     monkeypatch.setattr(
         solver_mod,
         "search_last_reel",
-        lambda spec, fixed, min_len, max_len, seed, max_candidates=200_000: list(
-            b.reels[-1]
-        ),
+        lambda spec, fixed, min_len, max_len, seed, max_candidates=200_000,
+        lower_bounds=None, core_pool=None: list(b.reels[-1]),
     )
 
     spec = hw()
