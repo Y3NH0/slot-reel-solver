@@ -1,6 +1,59 @@
-# slotmath
+# Slot Reel Solver
 
-A toolkit for finding slot-machine reel configurations whose Return To Player (RTP) equals a target **exactly** — not approximately, not within a tolerance band, but as an exact rational number — while also meeting a minimum win-rate requirement. It exists because RTP claims in this domain need to be provable, not eyeballed from a simulation.
+[![CI](https://github.com/Y3NH0/slot-reel-solver/actions/workflows/ci.yml/badge.svg)](https://github.com/Y3NH0/slot-reel-solver/actions/workflows/ci.yml)
+
+A solver for finding reel configurations that achieve an exact target RTP while satisfying a minimum win-rate constraint. The Python package is named `slotmath`.
+
+RTP is matched **exactly** — not approximately, not within a tolerance band, but as an exact rational number. RTP claims in this domain should be provable, not eyeballed from a simulation.
+
+## Submission Result
+
+| Metric | Requirement | Result |
+|---|---:|---:|
+| RTP | exactly 0.95 | exactly `19/20` = 0.95 |
+| Win rate | ≥ 0.55 | exactly `17/30` ≈ 0.5667 |
+| Reel lengths | unrestricted | 3, 8, 15 |
+| Evaluation | — | exact enumeration of all 360 outcomes |
+
+`19/20` is an exact `Fraction` equality against the target, not a rounded decimal. The 360 outcomes are `3 × 8 × 15`, every combination of reel stop positions, each counted exactly once.
+
+## Reel Configuration
+
+- Reel 1: `[2, 2, 2]`
+- Reel 2: `[3, 3, 3, 2, 2, 2, 1, 1]`
+- Reel 3: `[3, 3, 3, 3, 4, 3, 3, 3, 3, 0, 0, 0, 4, 4, 3]`
+
+Payout distribution: 156 outcomes pay nothing, 135 pay 1×, 69 pay 3×.
+
+## Quick Verification
+
+```bash
+uv sync --locked --dev
+uv run pytest -q
+uv run slotmath verify solutions/homework-3x3.json
+```
+
+`verify` recomputes the solution from `configs/homework-3x3.json` through two independent exact evaluators plus a fixed-seed Monte Carlo, and exits non-zero if any gate fails. It does not trust the numbers stored in the artifact — it recomputes them and compares.
+
+## Assumptions
+
+- Every stop position on a reel has equal probability.
+- A spin displays three consecutive symbols from each reel, using cyclic wrap-around.
+- A spin counts as a win when its total payout is greater than zero.
+- When multiple winning patterns occur in the same spin, only the highest payout is credited (`combine = "max"`).
+- **The original specification does not state how overlapping wins should be combined.** `max` is therefore an explicit modeling assumption made here, not a rule given by the assignment. It is written out in the config rather than left to a default, so the choice is visible.
+- The engine also implements additive evaluation (`combine = "sum"`), and it is exercised by the test suite. The submitted solution is evaluated with `combine = "max"`.
+
+Under `sum`, overlapping wins would add rather than compete, so the same reels would produce a different RTP — the submitted reels are a solution to the `max` model specifically.
+
+## Approach
+
+1. **Parse the game rules into an exact rational model.** Payouts become integer counts of a common unit, so every subsequent step is integer arithmetic (`models/spec.py`).
+2. **Search for candidate reel strips.** Reel lengths are chosen against a divisibility invariant rather than guessed, and the final reel is solved exactly as a linear Diophantine equation instead of sampled (`solving/`).
+3. **Evaluate every possible stop combination exactly.** No sampling, no tolerance — the full outcome space is enumerated (`evaluation/`).
+4. **Verify with independent evaluators**, plus Monte Carlo strictly as a sanity check (`verification/`).
+
+The rest of this document covers the model, architecture, and verification in detail.
 
 ## Exact rational RTP
 
@@ -181,12 +234,12 @@ A **PostToolUse hook** (`scripts/hooks/verify_on_write.py`) runs this same verif
 ## Repository layout
 
 ```text
-slot-reel-rtp/
+slot-reel-solver/
 ├── configs/
-│   ├── homework-3x3.json          # GameSpec: 3x3 grid, 5 patterns, RTP 0.95 target
+│   ├── homework-3x3.json          # GameSpec: 3x3 grid, 5 patterns, RTP 0.95, combine=max
 │   └── homework-3x3-per-reel-coverage.json   # same, + every reel holds every symbol
 ├── solutions/
-│   ├── homework-3x3.json          # accepted ReelConfig deliverable
+│   ├── homework-3x3.json          # submitted ReelConfig (primary)
 │   ├── homework-3x3-per-reel-coverage.json   # solution under that constraint
 │   └── portfolio.json             # diversity-filtered explore() output
 ├── scripts/hooks/
@@ -202,6 +255,8 @@ slot-reel-rtp/
 │   └── cli/                       # app.py (+ __init__.py exposing main)
 ├── tests/                         # one test module per src/slotmath/*/*.py, plus
 │                                   # test_hook.py, test_skills.py, fixtures.py
+├── .github/workflows/
+│   └── ci.yml                     # CI: tests + verify both solutions
 ├── .claude/
 │   ├── settings.json               # registers the PostToolUse hook
 │   └── skills/                     # slot-math-model, reel-strip-solver,
@@ -215,10 +270,10 @@ slot-reel-rtp/
 Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
 
 ```bash
-uv sync --dev
+uv sync --locked --dev
 ```
 
-This creates `.venv/` and installs `slotmath` (editable) plus its dev dependencies (`pytest`) from `uv.lock`.
+This creates `.venv/` and installs `slotmath` (editable) plus its dev dependencies (`pytest`) from `uv.lock`. `--locked` fails rather than silently re-resolving if the lockfile has drifted from `pyproject.toml`, which is what CI uses; drop it (`uv sync --dev`) if you are intentionally changing dependencies.
 
 ## Quick start
 
@@ -260,9 +315,9 @@ Exit codes are a contract across every command, because the PostToolUse hook dep
 | `1` | Verification did not pass |
 | `2` | The tool itself could not run (missing file, malformed JSON, a schema violation) — says nothing about whether a solution is correct |
 
-## The accepted deliverable
+## Primary Homework Solution
 
-`solutions/homework-3x3.json` holds a genuine solution to `configs/homework-3x3.json` (a 3x3 grid, target RTP 0.95, minimum win rate 0.55), verified against the JSON artifact and a fresh evaluator recomputation:
+The full record behind the summary at the top of this file. `solutions/homework-3x3.json` solves `configs/homework-3x3.json` (3x3 grid, target RTP 0.95, minimum win rate 0.55, `combine: "max"`), verified against the JSON artifact and a fresh evaluator recomputation:
 
 | | |
 |---|---|
@@ -273,10 +328,11 @@ Exit codes are a contract across every command, because the PostToolUse hook dep
 | Symbols used | all five (0-4) |
 | Spin count | 360 (`3 x 8 x 15`) |
 | Payout distribution | `{0: 156 combos, 1x: 135 combos, 3x: 69 combos}` |
+| Combine rule | `max` — an explicit modeling assumption, see [Assumptions](#assumptions) |
 
 This is entry 0 of `solutions/portfolio.json` (produced by `slotmath explore configs/homework-3x3.json --seed 500`) and is independently reproduced byte-for-byte by `slotmath solve configs/homework-3x3.json --seed 500` — the `solver.command` recorded in the artifact is that literal, runnable command.
 
-### Second deliverable: per-reel symbol coverage
+### Secondary solution: per-reel symbol coverage
 
 `solutions/homework-3x3-per-reel-coverage.json` solves the stricter `configs/homework-3x3-per-reel-coverage.json`, which adds `"coverage": {"each_reel_all_symbols": true}` — every reel must carry every declared symbol, not merely the union across reels:
 
@@ -290,7 +346,7 @@ This is entry 0 of `solutions/portfolio.json` (produced by `slotmath explore con
 
 Reproduced by `slotmath solve configs/homework-3x3-per-reel-coverage.json --seed 500`. The shape that works is one cheap symbol filling most of the strip with the rest sitting in it as isolated single positions — and *which* symbol may dominate is forced, not chosen: since RTP = win rate x average payout per win, a minimum win rate of 11/20 caps the average win at 19/11 ≈ 34.5 payout units, which symbol 2 (20 units) clears and symbols 3 (60) and 4 (100) do not.
 
-The original deliverable above is unchanged and still passes: its spec has no `coverage` block, so the stricter constraint is opt-in rather than retroactive.
+This is an additional exploration beyond the assignment, not the submission. The primary solution above is unchanged and still passes: its spec has no `coverage` block, so the stricter constraint is opt-in rather than retroactive.
 
 An earlier version of this file held a *degenerate* configuration — two symbols, win rate exactly 1 — that met the RTP and win-rate targets only by making it impossible for the player to lose. It was legal under the letter of the spec but not a real answer, and was replaced with the configuration above.
 
@@ -302,7 +358,7 @@ uv run pytest -v
 
 runs the full suite (255 tests as of this writing): one test module per `src/slotmath/*/*.py`, plus `tests/test_hook.py` (including a subprocess test that runs the literal command configured in `.claude/settings.json`, not just an in-process call) and `tests/test_skills.py`.
 
-To independently verify the accepted deliverable yourself:
+To independently verify the submitted solution yourself:
 
 ```bash
 uv run slotmath verify solutions/homework-3x3.json
@@ -313,3 +369,9 @@ should print nine gates, all `PASS` (one — `win_rate_not_degenerate` — is a 
 ```bash
 uv run slotmath verify solutions/homework-3x3.json --mc-spins 20000000
 ```
+
+### Continuous integration
+
+`.github/workflows/ci.yml` runs on every push and pull request against `ubuntu-latest` with Python 3.11, installing from `uv.lock` via `uv sync --locked --dev`. It runs the full test suite and then verifies both solution artifacts.
+
+CI deliberately does **not** re-run the solver search. Its job is to prove the committed artifacts are correct — an exact recomputation with a deterministic answer — whereas re-searching would test a stochastic process against a wall clock.
