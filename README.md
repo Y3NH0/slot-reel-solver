@@ -11,19 +11,21 @@ RTP is matched **exactly** — not approximately, not within a tolerance band, b
 | Metric | Requirement | Result |
 |---|---:|---:|
 | RTP | exactly 0.95 | exactly `19/20` = 0.95 |
-| Win rate | ≥ 0.55 | exactly `17/30` ≈ 0.5667 |
-| Reel lengths | unrestricted | 3, 8, 15 |
-| Evaluation | — | exact enumeration of all 360 outcomes |
+| Win rate | ≥ 0.55 | exactly `3/5` = 0.60 |
+| Reel lengths | unrestricted | 3, 10, 16 |
+| Evaluation | — | exact enumeration of all 480 outcomes |
 
-`19/20` is an exact `Fraction` equality against the target, not a rounded decimal. The 360 outcomes are `3 × 8 × 15`, every combination of reel stop positions, each counted exactly once.
+`19/20` is an exact `Fraction` equality against the target, not a rounded decimal. The 480 outcomes are `3 × 10 × 16`, every combination of reel stop positions, each counted exactly once.
 
 ## Reel Configuration
 
 - Reel 1: `[2, 2, 2]`
-- Reel 2: `[3, 3, 3, 2, 2, 2, 1, 1]`
-- Reel 3: `[3, 3, 3, 3, 4, 3, 3, 3, 3, 0, 0, 0, 4, 4, 3]`
+- Reel 2: `[1, 1, 1, 2, 2, 2, 1, 2, 2, 2]`
+- Reel 3: `[2, 2, 3, 3, 2, 2, 0, 0, 0, 2, 2, 4, 4, 3, 3, 3]`
 
-Payout distribution: 156 outcomes pay nothing, 135 pay 1×, 69 pay 3×.
+Payout distribution: 192 outcomes pay nothing, 156 pay 1×, 96 pay 2×, 36 pay 3×.
+
+The 2× and 3× outcomes are spins where two or three winning patterns overlap and their payouts add — see [Assumptions](#assumptions).
 
 ## Quick Verification
 
@@ -40,11 +42,21 @@ uv run slotmath verify solutions/homework-3x3.json
 - Every stop position on a reel has equal probability.
 - A spin displays three consecutive symbols from each reel, using cyclic wrap-around.
 - A spin counts as a win when its total payout is greater than zero.
-- When multiple winning patterns occur in the same spin, only the highest payout is credited (`combine = "max"`).
-- **The original specification does not state how overlapping wins should be combined.** `max` is therefore an explicit modeling assumption made here, not a rule given by the assignment. It is written out in the config rather than left to a default, so the choice is visible.
-- The engine also implements additive evaluation (`combine = "sum"`), and it is exercised by the test suite. The submitted solution is evaluated with `combine = "max"`.
+- When multiple winning patterns occur in the same spin, **every** matching pattern is paid and the payouts add (`combine = "sum"`).
 
-Under `sum`, overlapping wins would add rather than compete, so the same reels would produce a different RTP — the submitted reels are a solution to the `max` model specifically.
+**On that last point.** The assignment does not state how overlapping wins combine, so this is an explicit modeling assumption — but it is the reading its own wording supports. Rule 5 defines a payout *per pattern* ("for the first four patterns, the payout is bet × symbol multiplier") and nothing anywhere says only the best-paying pattern counts. Consider:
+
+```
+2 2 3
+2 2 3
+2 2 3
+```
+
+Columns 1 and 2 are entirely symbol `2`, so pattern 4.1 (top-left square) and pattern 4.3 (bottom-left square) have both genuinely occurred. Patterns 4.2, 4.4 and 4.5 all need column 3 and have not. Two wins happened, so two wins are paid: 20 + 20 payout units rather than 20.
+
+The same logic makes an all-one-symbol board pay `4 × 20 + 100 = 180` units — the four squares plus FULL — which is where the 9× outcomes in the coverage solution below come from.
+
+The engine also implements `combine = "max"` (only the highest-paying pattern counts), it is selectable per spec, and the test suite exercises both. The choice is written out in the config rather than left to a schema default, so it is visible at the point where it is made. It is load-bearing: under `max` these same reels give RTP `6/5`, not `19/20`.
 
 ## Approach
 
@@ -206,10 +218,10 @@ Applied to the two shipped solutions, this makes a real trade-off visible:
 
 | solution | reels | RTP | win rate | every reel holds every symbol | pairs raw-covered | symbols that can win |
 | --- | --- | --- | --- | --- | --- | --- |
-| `homework-3x3.json` | (3, 8, 15) | 19/20 | 17/30 | no | 4 / 25 | 2, 3 |
-| `homework-3x3-per-reel-coverage.json` | (10, 16, 15) | 19/20 | 37/60 | yes | 5 / 25 | 2 |
+| `homework-3x3.json` | (3, 10, 16) | 19/20 | 3/5 | no | 4 / 25 | 2 |
+| `homework-3x3-per-reel-coverage.json` | (10, 16, 15) | 19/20 | 113/200 | yes | 5 / 25 | 2 |
 
-Putting every symbol on every reel does not make every symbol *win* — under this paytable it costs the second winning symbol.
+Putting every symbol on every reel does not make every symbol *win*: in both solutions only symbol 2 ever completes a pattern, and the other four are present but decorative. Coverage is what makes that visible — RTP and win rate alone never would.
 
 ## Feasibility: proven impossible vs. not found
 
@@ -321,14 +333,14 @@ The full record behind the summary at the top of this file. `solutions/homework-
 
 | | |
 |---|---|
-| Reels | `[2,2,2]`, `[3,3,3,2,2,2,1,1]`, `[3,3,3,3,4,3,3,3,3,0,0,0,4,4,3]` |
+| Reels | `[2,2,2]`, `[1,1,1,2,2,2,1,2,2,2]`, `[2,2,3,3,2,2,0,0,0,2,2,4,4,3,3,3]` |
 | RTP | exactly `19/20` (0.95) |
-| Win rate | exactly `17/30` (≈0.5667), above the 0.55 minimum |
+| Win rate | exactly `3/5` (0.60), above the 0.55 minimum |
 | Max win | 3x |
 | Symbols used | all five (0-4) |
-| Spin count | 360 (`3 x 8 x 15`) |
-| Payout distribution | `{0: 156 combos, 1x: 135 combos, 3x: 69 combos}` |
-| Combine rule | `max` — an explicit modeling assumption, see [Assumptions](#assumptions) |
+| Spin count | 480 (`3 x 10 x 16`) |
+| Payout distribution | `{0: 192 combos, 1x: 156 combos, 2x: 96 combos, 3x: 36 combos}` |
+| Combine rule | `sum` — an explicit modeling assumption, see [Assumptions](#assumptions) |
 
 This is entry 0 of `solutions/portfolio.json` (produced by `slotmath explore configs/homework-3x3.json --seed 500`) and is independently reproduced byte-for-byte by `slotmath solve configs/homework-3x3.json --seed 500` — the `solver.command` recorded in the artifact is that literal, runnable command.
 
@@ -338,10 +350,11 @@ This is entry 0 of `solutions/portfolio.json` (produced by `slotmath explore con
 
 | | |
 |---|---|
-| Reels | `[1,2,2,2,2,2,2,0,3,4]`, `[2,2,2,2,2,2,0,3,4,1,2,2,2,2,2,2]`, `[2,2,2,2,2,2,0,2,2,1,2,4,2,3,2]` |
+| Reels | `[0,2,2,2,2,4,1,2,2,3]`, `[1,4,2,2,2,2,2,2,3,2,2,2,2,0,2,2]`, `[1,2,2,0,2,2,2,4,2,2,3,2,2,2,0]` |
 | RTP | exactly `19/20` (0.95) |
-| Win rate | exactly `37/60` (≈0.6167) |
+| Win rate | exactly `113/200` (0.565) |
 | Spin count | 2400 (`10 x 16 x 15`) |
+| Max win | 9x — all four squares plus FULL on one spin |
 | Every reel holds all five symbols | yes |
 
 Reproduced by `slotmath solve configs/homework-3x3-per-reel-coverage.json --seed 500`. The shape that works is one cheap symbol filling most of the strip with the rest sitting in it as isolated single positions — and *which* symbol may dominate is forced, not chosen: since RTP = win rate x average payout per win, a minimum win rate of 11/20 caps the average win at 19/11 ≈ 34.5 payout units, which symbol 2 (20 units) clears and symbols 3 (60) and 4 (100) do not.

@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `slotmath` is a toolkit for finding slot-machine reel configurations whose Return To Player (RTP) equals a target **exactly** (as a rational number, not a float within tolerance) while also meeting a minimum win-rate. Payouts are tracked as exact integer "payout units" (`Fraction`-typed internally); RTP/win-rate comparisons against targets are always exact `Fraction` equality/inequality, never floating point with an epsilon. Floats appear only as a display layer over the integer counts, never as the basis for a pass/fail decision.
 
-The accepted deliverable is `solutions/homework-3x3.json`, solving `configs/homework-3x3.json` per `docs/DS-HomeWork.md`.
+The submitted solution is `solutions/homework-3x3.json`, solving `configs/homework-3x3.json` per `docs/DS-HomeWork.md`.
 
 ## Commands
 
@@ -54,7 +54,7 @@ The package is organized into subpackages by responsibility under `src/slotmath/
 - **`engine.py`** — the fast evaluator the solver's inner loop actually uses. Instead of enumerating every reel-stop combination, it collapses each reel into a histogram over distinct per-column "signatures" (`signature_histograms`) — what a touching pattern would see in that column: a matching symbol or `None` — since pattern-matching decomposes per column. This turns `O(prod(len(reel_i)))` into `O(prod(|signatures_c|))`, while remaining exact. Raises `SignatureBudgetExceeded` if the signature space would exceed budget, guarding against unbounded enumeration on oversized artifacts.
 - **`montecarlo.py`** — an independent simulation sharing zero abstractions with the other two. This independence is enforced by `tests/test_montecarlo.py`'s AST-based test, which walks the module's import statements rather than grepping for substrings (a grep-based check previously missed `from slotmath import engine`-style imports) — it forbids any import touching `engine`, `windows`, or `naive`, regardless of which subpackage they live under.
 
-The combine-logic (how multiple winning patterns on one spin add up — see `Pattern.combine`, default `"max"`: only the single highest-paying pattern pays) is intentionally re-implemented in all three modules rather than factored into one shared helper, so a bug in one becomes a visible disagreement instead of a silent shared mistake. When changing payout logic, all three must be updated in lockstep and re-verified against each other and against `tests/fixtures.py`'s golden fixtures (A/B/C).
+The combine-logic (how multiple winning patterns on one spin add up — see `GameSpec.combine`. The schema default is `"max"` (only the highest-paying pattern pays), but **the homework configs set `"sum"` explicitly**: the assignment defines a payout per pattern and never says only the best one counts, so overlapping wins add. A board with two overlapping squares pays 20+20, and an all-one-symbol board pays 4x20+100. This is load-bearing — the same reels give RTP 6/5 under `"max"` and 19/20 under `"sum"`) is intentionally re-implemented in all three modules rather than factored into one shared helper, so a bug in one becomes a visible disagreement instead of a silent shared mistake. When changing payout logic, all three must be updated in lockstep and re-verified against each other and against `tests/fixtures.py`'s golden fixtures (A/B/C).
 
 ### Data flow
 
