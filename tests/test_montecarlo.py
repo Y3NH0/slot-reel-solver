@@ -75,3 +75,14 @@ def test_montecarlo_shares_no_abstraction_with_the_exact_evaluators():
         if any(part in forbidden for part in target.split("."))
     }
     assert not leaked, f"montecarlo.py must not import {sorted(leaked)}"
+
+
+@pytest.mark.parametrize("g", GOLDEN, ids=IDS)
+def test_monte_carlo_agrees_with_exact_under_combine_sum(g):
+    """Layer 3 has to hold for the homework's actual combine rule, not only
+    for "max". montecarlo.py reimplements the rule independently, so summing
+    is a genuinely separate code path there and needs its own check."""
+    spec = hw(combine="sum")
+    exact = naive.evaluate(spec, g.reels)
+    sim = montecarlo.simulate(spec, g.reels, spins=200_000, seed=20260731)
+    assert abs(montecarlo.sigma_deviation(spec, g.reels, sim, exact)) < 5.0

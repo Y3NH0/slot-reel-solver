@@ -21,10 +21,17 @@ def payload(path):
 
 
 def write_solution(tmp_path, g, **mutate):
+    # The golden fixtures were cross-verified under combine="max", so they are
+    # checked against a "max" spec written here rather than against
+    # configs/homework-3x3.json -- that file models the homework, and its
+    # combine rule is a question about the assignment, not about these
+    # fixtures.
     spec = hw()
+    spec_path = tmp_path / "max-spec.json"
+    spec_path.write_text(spec.model_dump_json(), encoding="utf-8")
     metrics = build_metrics(spec, naive.evaluate(spec, g.reels))
     data = {
-        "spec": "configs/homework-3x3.json",
+        "spec": str(spec_path),
         "reels": g.reels,
         "metrics": json.loads(metrics.model_dump_json()),
     }

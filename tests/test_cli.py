@@ -13,8 +13,25 @@ from tests.test_naive import hw
 MC = ["--mc-spins", "20000"]
 
 
-def write_config(tmp_path, g, spec_path, **over):
+def write_max_spec(tmp_path):
+    """A spec matching hw() -- combine="max" -- written to disk.
+
+    The golden fixtures were cross-verified under "max", so an artifact built
+    from them has to be checked against a "max" spec. They deliberately do not
+    borrow configs/homework-3x3.json: that file models the homework, whose
+    combine rule is a question about the assignment, not about these fixtures.
+    Pointing at it once meant a change of interpretation there silently broke
+    tests here.
+    """
+    path = tmp_path / "max-spec.json"
+    path.write_text(hw().model_dump_json(), encoding="utf-8")
+    return path
+
+
+def write_config(tmp_path, g, spec_path=None, **over):
     spec = hw()
+    if spec_path is None:
+        spec_path = write_max_spec(tmp_path)
     metrics = build_metrics(spec, naive.evaluate(spec, g.reels))
     data = {
         "spec": str(spec_path),
@@ -78,13 +95,13 @@ def test_verify_returns_0_for_a_golden_config(tmp_path, capsys):
     # Fixture A: the only golden fixture using all five declared symbols (B
     # and C each omit one -- see tests/test_verify.py), so it's the one that
     # passes the all_symbols_used gate and every other gate outright.
-    cfg = write_config(tmp_path, GOLDEN[0], "configs/homework-3x3.json")
+    cfg = write_config(tmp_path, GOLDEN[0])
     assert main(["verify", str(cfg), *MC]) == 0
     assert "PASS" in capsys.readouterr().out
 
 
 def test_verify_returns_1_for_a_failing_config(tmp_path, capsys):
-    cfg = write_config(tmp_path, GOLDEN[2], "configs/homework-3x3.json")
+    cfg = write_config(tmp_path, GOLDEN[2])
     data = json.loads(cfg.read_text(encoding="utf-8"))
     data["metrics"]["spin_count"] += 1
     cfg.write_text(json.dumps(data), encoding="utf-8")
@@ -97,7 +114,7 @@ def test_verify_returns_2_when_referenced_spec_is_missing(tmp_path):
 
 
 def test_report_prints_payout_table(tmp_path, capsys):
-    cfg = write_config(tmp_path, GOLDEN[2], "configs/homework-3x3.json")
+    cfg = write_config(tmp_path, GOLDEN[2])
     assert main(["report", str(cfg)]) == 0
     out = capsys.readouterr().out
     assert "19/20" in out

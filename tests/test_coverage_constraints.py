@@ -30,14 +30,14 @@ from slotmath.verification.verify import ReelConfig, verify
 from tests.fixtures import GOLDEN
 from tests.test_naive import hw
 
-# The per-reel-coverage solution found during this work. Its reels are the
-# fixture; every number below is recomputed from them by the repository's own
-# evaluators, never read from a file, so the test would catch a solution that
-# was edited to look correct.
+# The per-reel-coverage solution, under the homework's combine="sum" rule. Its
+# reels are the fixture; every number below is recomputed from them by the
+# repository's own evaluators, never read from a file, so the test would catch
+# a solution that was edited to look correct.
 PER_REEL_REELS = [
-    [0, 4, 1, 2, 2, 2, 2, 2, 2, 2, 3, 4],
-    [0, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 4],
-    [0, 2, 2, 2, 2, 2, 2, 1, 2, 2, 3, 4],
+    [0, 2, 2, 2, 2, 4, 1, 2, 2, 3],
+    [1, 4, 2, 2, 2, 2, 2, 2, 3, 2, 2, 2, 2, 0, 2, 2],
+    [1, 2, 2, 0, 2, 2, 2, 4, 2, 2, 3, 2, 2, 2, 0],
 ]
 
 
@@ -140,23 +140,28 @@ def test_per_reel_solution_has_the_exact_expected_metrics():
     """Recomputed from the reels by both exact evaluators. The numbers are
     pinned so a change in payout logic cannot quietly move them."""
     spec = coverage_spec(each_reel_all_symbols=True)
-    assert [len(r) for r in PER_REEL_REELS] == [12, 15, 12]
+    assert [len(r) for r in PER_REEL_REELS] == [10, 16, 15]
 
     naive_dist = naive.evaluate(spec, PER_REEL_REELS)
     engine_dist = engine.evaluate(spec, PER_REEL_REELS, budget=5_000_000)
     assert naive_dist == engine_dist
 
     metrics = build_metrics(spec, naive_dist)
-    assert metrics.spin_count == 2160
-    assert metrics.win_count == 1332
-    assert metrics.total_payout_units == 41040
+    assert metrics.spin_count == 2400
+    assert metrics.win_count == 1356
+    assert metrics.total_payout_units == 45600
+    # The 40/60/180 buckets only exist because payouts sum: 40 is two 2x2
+    # patterns at once, 180 is all four plus FULL (4x20 + 100). Under "max"
+    # this distribution would collapse onto 20 and 100 alone.
     assert {b.payout_units: b.combo_count for b in metrics.payout_distribution} == {
-        0: 828,
-        20: 1152,
-        100: 180,
+        0: 1044,
+        20: 744,
+        40: 444,
+        60: 144,
+        180: 24,
     }
     assert exact_rtp(metrics) == Fraction(19, 20)
-    assert exact_win_rate(metrics) == Fraction(37, 60)
+    assert exact_win_rate(metrics) == Fraction(113, 200)
     assert all(not m for m in missing_symbols_per_reel(spec, PER_REEL_REELS))
 
 
@@ -172,13 +177,14 @@ def test_the_shipped_per_reel_solution_verifies():
     assert all(not m for m in missing_symbols_per_reel(spec, data["reels"]))
 
 
-def test_the_original_homework_solution_is_untouched():
-    """The stricter constraint is opt-in, so the original deliverable stands."""
+def test_the_primary_homework_solution_verifies():
+    """The stricter per-reel constraint is opt-in: the primary spec has no
+    coverage block, so its solution is judged on RTP and win rate alone."""
     spec = load_spec("configs/homework-3x3.json")
     data = json.loads(
         Path("solutions/homework-3x3.json").read_text(encoding="utf-8")
     )
-    assert [len(r) for r in data["reels"]] == [3, 8, 15]
+    assert [len(r) for r in data["reels"]] == [3, 10, 16]
     report = verify(spec, ReelConfig(**data), mc_spins=200_000)
     assert report.passed, report.render()
 

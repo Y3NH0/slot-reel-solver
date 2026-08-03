@@ -76,3 +76,33 @@ def test_distribution_counts_sum_to_spin_count():
     reels = [[0, 1, 2, 2, 3], [1, 1, 2, 0], [2, 2, 2, 4, 1, 0]]
     dist = evaluate(spec, reels)
     assert sum(dist.values()) == 5 * 4 * 6
+
+
+# --------------------------------------------------------------------------
+# the combine rule, pinned to the worked example that decided it
+# --------------------------------------------------------------------------
+
+
+def test_two_overlapping_patterns_sum_rather_than_compete():
+    """The board that settled the interpretation.
+
+        2 2 3
+        2 2 3
+        2 2 3
+
+    Columns 0 and 1 are entirely symbol 2, so TL (rows 0-1 of those columns)
+    and BL (rows 1-2) both match; TR, BR and FULL all need column 2 and do
+    not. The assignment defines a payout per pattern and never says only the
+    best one counts, so both are credited: 20 + 20 units, not 20.
+    """
+    columns = [(2, 2, 2), (2, 2, 2), (3, 3, 3)]
+    assert grid_payout_units(hw(combine="sum"), columns) == 40
+    assert grid_payout_units(hw(combine="max"), columns) == 20
+
+
+def test_an_all_one_symbol_board_credits_the_four_squares_and_full():
+    """Every pattern matches, so summing gives 4 x 20 + 100 = 180 units --
+    the 9x that the paytable's FULL multiplier implies once overlaps add."""
+    columns = [(2, 2, 2), (2, 2, 2), (2, 2, 2)]
+    assert grid_payout_units(hw(combine="sum"), columns) == 180
+    assert grid_payout_units(hw(combine="max"), columns) == 100
