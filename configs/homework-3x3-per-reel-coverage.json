@@ -9,7 +9,7 @@
     { "name": "BR",   "cells": [[1,1],[1,2],[2,1],[2,2]] },
     { "name": "FULL", "cells": "all", "pattern_multiplier": 5 }
   ],
-  "combine": "max",
+  "combine": "sum",
   "targets": { "rtp": 0.95, "min_win_rate": 0.55 },
   "coverage": { "each_reel_all_symbols": true }
 }

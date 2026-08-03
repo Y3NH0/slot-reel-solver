@@ -7,57 +7,65 @@
       2
     ],
     [
-      3,
-      3,
-      3,
+      1,
+      1,
+      1,
       2,
       2,
       2,
       1,
-      1
+      2,
+      2,
+      2
     ],
     [
+      2,
+      2,
       3,
       3,
-      3,
-      3,
-      4,
-      3,
-      3,
-      3,
-      3,
+      2,
+      2,
       0,
       0,
       0,
+      2,
+      2,
       4,
       4,
+      3,
+      3,
       3
     ]
   ],
   "metrics": {
-    "spin_count": 360,
-    "win_count": 204,
-    "win_rate": 0.5666666666666667,
-    "total_payout_units": 6840,
+    "spin_count": 480,
+    "win_count": 288,
+    "win_rate": 0.6,
+    "total_payout_units": 9120,
     "payout_unit_denominator": 20,
     "rtp": 0.95,
-    "volatility": 1.0943034314119644,
+    "volatility": 0.9473647660748208,
     "max_win": 3.0,
     "payout_distribution": [
       {
         "payout_units": 0,
         "payout": 0.0,
-        "combo_count": 156
+        "combo_count": 192
       },
       {
         "payout_units": 20,
         "payout": 1.0,
-        "combo_count": 135
+        "combo_count": 156
+      },
+      {
+        "payout_units": 40,
+        "payout": 2.0,
+        "combo_count": 96
       },
       {
         "payout_units": 60,
         "payout": 3.0,
-        "combo_count": 69
+        "combo_count": 36
       }
     ]
   },
