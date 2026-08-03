@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `slotmath` is a toolkit for finding slot-machine reel configurations whose Return To Player (RTP) equals a target **exactly** (as a rational number, not a float within tolerance) while also meeting a minimum win-rate. Payouts are tracked as exact integer "payout units" (`Fraction`-typed internally); RTP/win-rate comparisons against targets are always exact `Fraction` equality/inequality, never floating point with an epsilon. Floats appear only as a display layer over the integer counts, never as the basis for a pass/fail decision.
 
-The submitted solution is `solutions/homework-3x3.json`, solving `configs/homework-3x3.json` per `docs/DS-HomeWork.md`.
+The submitted solution is `solutions/homework-3x3-per-reel-coverage.json`, solving `configs/homework-3x3-per-reel-coverage.json` per `docs/DS-HomeWork.md`. That spec is the assignment plus one self-imposed constraint (`each_reel_all_symbols`), kept for a concrete reason: solved against the bare requirements the search reliably lands on a length-3 single-symbol reel whose top payout is 3x, so **pattern 4.5 (FULL) never occurs at all** — six seeds produced that same shape. The coverage constraint pushes it off that attractor, and the submitted reels fire all five patterns (FULL at 1/100) with no constant reel, at the cost of 0.035 win rate. Those reels also satisfy the bare `configs/homework-3x3.json` with identical RTP and win rate. `solutions/homework-3x3.json` is the bare-requirements solution, kept for comparison — do not delete it, the contrast is the argument.
 
 ## Commands
 

@@ -165,7 +165,7 @@ def test_per_reel_solution_has_the_exact_expected_metrics():
     assert all(not m for m in missing_symbols_per_reel(spec, PER_REEL_REELS))
 
 
-def test_the_shipped_per_reel_solution_verifies():
+def test_the_submitted_solution_verifies():
     spec = load_spec("configs/homework-3x3-per-reel-coverage.json")
     data = json.loads(
         Path("solutions/homework-3x3-per-reel-coverage.json").read_text(
@@ -177,9 +177,10 @@ def test_the_shipped_per_reel_solution_verifies():
     assert all(not m for m in missing_symbols_per_reel(spec, data["reels"]))
 
 
-def test_the_primary_homework_solution_verifies():
-    """The stricter per-reel constraint is opt-in: the primary spec has no
-    coverage block, so its solution is judged on RTP and win rate alone."""
+def test_the_bare_requirements_solution_verifies():
+    """Kept alongside the submitted solution for comparison: its spec has no
+    coverage block, so it is judged on RTP and win rate alone. The contrast is
+    what justifies submitting the stricter one -- see the README."""
     spec = load_spec("configs/homework-3x3.json")
     data = json.loads(
         Path("solutions/homework-3x3.json").read_text(encoding="utf-8")
